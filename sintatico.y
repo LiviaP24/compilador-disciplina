@@ -77,7 +77,13 @@
 				;
 
 	cmd			: E 
+				{
+					$$.traducao = $1.traducao;
+				}
 				| D
+				{
+					$$.traducao = $1.traducao;
+				}
 				;	
 
 	E 			: E '+' E
@@ -144,6 +150,7 @@
 
 					string temp = gentempcode();
 					add_var($2.label, $1.label, false, temp);
+					$$.traducao = "";
 				}
 				| TK_VARIAVEL '=' E
 				{

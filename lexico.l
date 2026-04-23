@@ -23,6 +23,7 @@ VARIAVEL {LETTER}+({LETTER}|{DIGITO})*
 [+-]			{ return *yytext; }
 [*/]			{ return *yytext; }
 [()]            { return *yytext; }
+[=]             { return *yytext; }
 
 {FLOAT}     { yylval.label = yytext; return TK_FLOAT__; }
 {NUM}		{ yylval.label = yytext; return TK_NUM; }

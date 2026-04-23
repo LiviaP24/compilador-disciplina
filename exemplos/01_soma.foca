@@ -1,2 +1,2 @@
 int A
-int A
+A = (A + 2) * 3
