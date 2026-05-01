@@ -37,15 +37,27 @@
 
 	%}
 
+	%token TK_BOOL
+	%token TK_AND TK_OR TK_NOT
+
+	%token TK_GT TK_LT TK_GE TK_LE TK_EQ TK_NE
+
 	%token TK_NUM
 	%token TK_FLOAT__
 	%token TK_VARIAVEL
 	%token TK_TIPO
+	%token TK_CHAR
 
 	%start S
 
 	%left '+''-'
 	%left '*''/'
+	
+	%left TK_OR
+	%left TK_AND
+	%right TK_NOT
+
+	%nonassoc TK_GT TK_LT TK_GE TK_LE TK_EQ TK_NE
 
 	%%
 
@@ -140,6 +152,92 @@
 					variavel x = tabela[$1.label];
 					$$.label = x.temp;
 				}
+				| TK_CHAR
+				{
+					$$.label = $1.label;
+					$$.traducao = "";
+				}
+				| TK_BOOL
+				{
+					if ($1.label == "true")
+						$$.label = "1";
+					else
+						$$.label = "0";
+
+					$$.traducao = "";
+				}
+				| E TK_AND E
+				{
+					$$.label = gentempcode();
+					add_var($$.label, "int", true, $$.label);
+
+					$$.traducao = $1.traducao + $3.traducao +
+						"\t" + $$.label + " = " + $1.label + " && " + $3.label + ";\n";
+				}
+				| E TK_OR E
+				{
+					$$.label = gentempcode();
+					add_var($$.label, "int", true, $$.label);
+
+					$$.traducao = $1.traducao + $3.traducao +
+						"\t" + $$.label + " = " + $1.label + " || " + $3.label + ";\n";
+				}
+				| TK_NOT E
+				{
+					$$.label = gentempcode();
+					add_var($$.label, "int", true, $$.label);
+
+					$$.traducao = $2.traducao +
+						"\t" + $$.label + " = !" + $2.label + ";\n";
+				}
+				| E TK_GT E
+				{
+					$$.label = gentempcode();
+					add_var($$.label, "int", true, $$.label);
+
+					$$.traducao = $1.traducao + $3.traducao +
+						"\t" + $$.label + " = " + $1.label + " > " + $3.label + ";\n";
+				}
+				| E TK_LT E
+				{
+					$$.label = gentempcode();
+					add_var($$.label, "int", true, $$.label);
+
+					$$.traducao = $1.traducao + $3.traducao +
+						"\t" + $$.label + " = " + $1.label + " < " + $3.label + ";\n";
+				}
+				| E TK_GE E
+				{
+					$$.label = gentempcode();
+					add_var($$.label, "int", true, $$.label);
+
+					$$.traducao = $1.traducao + $3.traducao +
+						"\t" + $$.label + " = " + $1.label + " >= " + $3.label + ";\n";
+				}
+				| E TK_LE E
+				{
+					$$.label = gentempcode();
+					add_var($$.label, "int", true, $$.label);
+
+					$$.traducao = $1.traducao + $3.traducao +
+						"\t" + $$.label + " = " + $1.label + " <= " + $3.label + ";\n";
+				}
+				| E TK_EQ E
+				{
+					$$.label = gentempcode();
+					add_var($$.label, "int", true, $$.label);
+
+					$$.traducao = $1.traducao + $3.traducao +
+						"\t" + $$.label + " = " + $1.label + " == " + $3.label + ";\n";
+				}
+				| E TK_NE E
+				{
+					$$.label = gentempcode();
+					add_var($$.label, "int", true, $$.label);
+
+					$$.traducao = $1.traducao + $3.traducao +
+						"\t" + $$.label + " = " + $1.label + " != " + $3.label + ";\n";
+				}
 				;
 	D			: TK_TIPO TK_VARIAVEL
 				{
@@ -193,19 +291,27 @@
 			}
 
 			variavel v;
+
+			if (tipo == "bool")
+			v.tipo = "int";
+			else
 			v.tipo = tipo;
+
 			v.valor = "";
 			v.temp = vars_temp;
 			tabela[nome] = v;
-			var += "\t" + tipo + " " + vars_temp + ";" + "\n";
+			var += "\t" + v.tipo + " " + vars_temp + ";" + "\n";
 		}
 		else {
 			variavel v;
+			if (tipo == "bool")
+			v.tipo = "int";
+			else
 			v.tipo = tipo;
 			v.valor = "";
 			v.temp = nome;
 			tabela[chave_temp()] = v;
-			var += "\t" + tipo + " " + vars_temp + ";" + "\n";
+			var += "\t" + v.tipo + " " + vars_temp + ";" + "\n";
 		}
 	}
 

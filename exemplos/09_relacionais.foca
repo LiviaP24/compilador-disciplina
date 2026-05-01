@@ -1,2 +1,2 @@
-bool R;
-R = 3 < 5;
+bool R
+R = 3 < 5
