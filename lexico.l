@@ -19,10 +19,7 @@ VARIAVEL {LETTER}+({LETTER}|{DIGITO})*
 "&&"        { return TK_AND; }
 "||"        { return TK_OR; }
 "!"         { return TK_NOT; }
-">="  { return TK_GE; }
-"<="  { return TK_LE; }
-"=="  { return TK_EQ; }
-"!="  { return TK_NE; }
+
 ">"   { return TK_GT; }
 "<"   { return TK_LT; }
 
