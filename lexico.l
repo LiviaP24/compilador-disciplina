@@ -37,6 +37,7 @@ BOOL (true|false)
 [*/]			{ return *yytext; }
 [()]            { return *yytext; }
 [=]             { return *yytext; }
+[;]             { return *yytext; }
 
 {BOOL}     { yylval.label = yytext; return TK_BOOL; }
 {CHAR}      { yylval.label = yytext; return TK_CHAR; }

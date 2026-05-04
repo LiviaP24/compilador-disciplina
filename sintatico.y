@@ -52,14 +52,15 @@
 
 	%start S
 
-	%left '+''-'
-	%left '*''/'
-
 	%left TK_OR
 	%left TK_AND
 	%right TK_NOT
 
 	%nonassoc TK_GT TK_LT TK_GE TK_LE TK_EQ TK_NE
+
+	%left '+''-'
+	%left '*''/'
+	%right UMINUS
 
 	%%
 
@@ -90,11 +91,11 @@
 				}
 				;
 
-	cmd			: E 
+	cmd			: E ';'
 				{
 					$$.traducao = $1.traducao;
 				}
-				| D
+				| D ';'
 				{
 					$$.traducao = $1.traducao;
 				}
@@ -177,6 +178,15 @@
 					$$.label = $2.label;
 					$$.traducao = $2.traducao;
 					$$.tipo = $2.tipo;
+				}
+				| '-' E %prec UMINUS
+				{
+					$$.label = gentempcode();
+					$$.tipo = $2.tipo;
+
+					add_var($$.label, $$.tipo, true, $$.label);
+
+					$$.traducao = $2.traducao + "\t" + $$.label + " = -" + $2.label + ";\n";
 				}
 				| TK_FLOAT__
 				{
@@ -385,8 +395,7 @@
 					}
 
 					if(a.tipo == "int" && expressao.tipo == "float"){
-						yyerror("Nao pode atribuir float em variavel int");
-						exit(1);
+						expressao.tipo = "int";
 					}
 
 					a.valor = $3.label;
@@ -414,6 +423,10 @@
 
 	void add_var(string nome, string tipo, bool temp, string vars_temp){
 
+		if(tipo == "bool"){
+			tipo = "int";
+		}
+
 		if(!temp){
 
 			if(tabela.find(nome) != tabela.end()){
@@ -422,26 +435,21 @@
 			}
 
 			variavel v;
-			if (tipo == "bool")
-			v.tipo = "int";
-			else
-			v.tipo = tipo;
 			v.tipo = tipo;
 			v.valor = "";
 			v.temp = vars_temp;
+
 			tabela[nome] = v;
 			var += "\t" + v.tipo + " " + vars_temp + ";" + "\n";
 		}
 		else {
 			variavel v;
-			if (tipo == "bool")
-			v.tipo = "int";
-			else
-			v.tipo = tipo;
 			v.tipo = tipo;
 			v.valor = "";
 			v.temp = nome;
+
 			tabela[chave_temp()] = v;
+
 			var += "\t" + tipo + " " + vars_temp + ";" + "\n";
 		}
 	}
