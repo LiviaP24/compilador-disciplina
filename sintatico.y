@@ -234,6 +234,10 @@
 				}
 				| E TK_AND E
 				{
+					if ($1.tipo != "bool" || $3.tipo != "bool") {
+        yyerror("Operador invalido para tipos nao booleanos");
+		exit(1);
+    }
 					$$.label = gentempcode();
 					add_var($$.label, "int", true, $$.label);
 
@@ -242,6 +246,10 @@
 				}
 				| E TK_OR E
 				{
+					if ($1.tipo != "bool" || $3.tipo != "bool") {
+        yyerror("Operador invalido para tipos nao booleanos");
+		exit(1);
+    }
 					$$.label = gentempcode();
 					add_var($$.label, "int", true, $$.label);
 
@@ -250,6 +258,10 @@
 				}
 				| TK_NOT E
 				{
+					if ($2.tipo != "bool") {
+        yyerror("Operador invalido para tipos nao booleanos");
+		exit(1);
+    }
 					$$.label = gentempcode();
 					add_var($$.label, "int", true, $$.label);
 
@@ -423,9 +435,7 @@
 
 	void add_var(string nome, string tipo, bool temp, string vars_temp){
 
-		if(tipo == "bool"){
-			tipo = "int";
-		}
+		
 
 		if(!temp){
 
@@ -436,15 +446,21 @@
 
 			variavel v;
 			v.tipo = tipo;
+			if(tipo == "bool"){
+			tipo = "int";
+		}
 			v.valor = "";
 			v.temp = vars_temp;
 
 			tabela[nome] = v;
-			var += "\t" + v.tipo + " " + vars_temp + ";" + "\n";
+			var += "\t" + tipo + " " + vars_temp + ";" + "\n";
 		}
 		else {
 			variavel v;
 			v.tipo = tipo;
+			if(tipo == "bool"){
+			tipo = "int";
+		}
 			v.valor = "";
 			v.temp = nome;
 
