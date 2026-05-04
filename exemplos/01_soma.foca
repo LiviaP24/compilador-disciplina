@@ -1,0 +1,7 @@
+true && true;
+
+a = (a > 3.0) 
+ta recebendo true sendo int
+relacionais com tipos diferentes nao pode
+
+problema de conversao float --> int

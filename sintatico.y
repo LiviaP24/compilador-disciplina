@@ -225,6 +225,7 @@
 				}
 				| TK_BOOL
 				{
+					$$.tipo = "bool";
 					if ($1.label == "true")
 						$$.label = "1";
 					else
@@ -239,6 +240,7 @@
 		exit(1);
     }
 					$$.label = gentempcode();
+					
 					add_var($$.label, "int", true, $$.label);
 
 					$$.traducao = $1.traducao + $3.traducao +
@@ -263,6 +265,7 @@
 		exit(1);
     }
 					$$.label = gentempcode();
+					$$.tipo = "bool";
 					add_var($$.label, "int", true, $$.label);
 
 					$$.traducao = $2.traducao +
@@ -280,7 +283,7 @@
 				{
 					$$.label = gentempcode();
 					add_var($$.label, "int", true, $$.label);
-
+					$$.tipo = "bool";
 					$$.traducao = $1.traducao + $3.traducao +
 						"\t" + $$.label + " = " + $1.label + " < " + $3.label + ";\n";
 				}
