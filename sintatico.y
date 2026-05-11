@@ -2,6 +2,7 @@
 	#include <iostream>
 	#include <string>
 	#include <map>
+	#include <set>
 
 	#define YYSTYPE atributos
 
@@ -29,13 +30,50 @@
 
 	map<string, variavel> tabela;
 
+	// Tabelas de verificacao de tipos
+	map<pair<string,string>, string> tab_aritm = {
+		{{"int",   "int"},   "int"},
+		{{"int",   "float"}, "float"},
+		{{"float", "int"},   "float"},
+		{{"float", "float"}, "float"},
+	};
+
+	set<pair<string,string>> tab_relac = {
+		{"int",   "int"},
+		{"int",   "float"},
+		{"float", "int"},
+		{"float", "float"},
+	};
+
+	set<pair<string,string>> tab_igual = {
+		{"int",   "int"},
+		{"int",   "float"},
+		{"float", "int"},
+		{"float", "float"},
+		{"bool",  "bool"},
+		{"char",  "char"},
+	};
+
+	set<string> tab_logico = {"bool"};
+
+	map<pair<string,string>, string> tab_atrib = {
+		{{"int",   "int"},   "ok"},
+		{{"float", "float"}, "ok"},
+		{{"bool",  "bool"},  "ok"},
+		{{"char",  "char"},  "ok"},
+		{{"float", "int"},   "promove"},
+	};
+
 	int yylex(void);
 	void yyerror(string);
 	string gentempcode();
 	void add_var(string, string, bool, string);
 	string chave_temp();
 	bool verificacao_tabela(string);
-	string tipo_result(string tipo1, string tipo2);
+	string checar_aritmetico(string t1, string t2);
+	bool   checar_relacional(string t1, string t2);
+	bool   checar_igualdade(string t1, string t2);
+	string checar_atribuicao(string tv, string te);
 	atributos converter_p_float(atributos e);
 	atributos converter_p_int(atributos e);
 
@@ -106,9 +144,12 @@
 					atributos esquerda = $1;
 					atributos direita = $3;
 
-					string tipoFinal = tipo_result(esquerda.tipo, direita.tipo);
-
-					if(tipoFinal == "float"){
+					string tipoFinal = checar_aritmetico(esquerda.tipo, direita.tipo);
+					if(tipoFinal == "") {
+						yyerror("Operacao aritmetica invalida entre '" + esquerda.tipo + "' e '" + direita.tipo + "'");
+						exit(1);
+					}
+					if(tipoFinal == "float") {
 						esquerda = converter_p_float(esquerda);
 						direita = converter_p_float(direita);
 					}
@@ -124,9 +165,12 @@
 					atributos esquerda = $1;
 					atributos direita = $3;
 
-					string tipoFinal = tipo_result(esquerda.tipo, direita.tipo);
-
-					if(tipoFinal == "float"){
+					string tipoFinal = checar_aritmetico(esquerda.tipo, direita.tipo);
+					if(tipoFinal == "") {
+						yyerror("Operacao aritmetica invalida entre '" + esquerda.tipo + "' e '" + direita.tipo + "'");
+						exit(1);
+					}
+					if(tipoFinal == "float") {
 						esquerda = converter_p_float(esquerda);
 						direita = converter_p_float(direita);
 					}
@@ -142,9 +186,12 @@
 					atributos esquerda = $1;
 					atributos direita = $3;
 
-					string tipoFinal = tipo_result(esquerda.tipo, direita.tipo);
-
-					if(tipoFinal == "float"){
+					string tipoFinal = checar_aritmetico(esquerda.tipo, direita.tipo);
+					if(tipoFinal == "") {
+						yyerror("Operacao aritmetica invalida entre '" + esquerda.tipo + "' e '" + direita.tipo + "'");
+						exit(1);
+					}
+					if(tipoFinal == "float") {
 						esquerda = converter_p_float(esquerda);
 						direita = converter_p_float(direita);
 					}
@@ -160,9 +207,12 @@
 					atributos esquerda = $1;
 					atributos direita = $3;
 
-					string tipoFinal = tipo_result(esquerda.tipo, direita.tipo);
-
-					if(tipoFinal == "float"){
+					string tipoFinal = checar_aritmetico(esquerda.tipo, direita.tipo);
+					if(tipoFinal == "") {
+						yyerror("Operacao aritmetica invalida entre '" + esquerda.tipo + "' e '" + direita.tipo + "'");
+						exit(1);
+					}
+					if(tipoFinal == "float") {
 						esquerda = converter_p_float(esquerda);
 						direita = converter_p_float(direita);
 					}
@@ -220,25 +270,25 @@
 				}
 				| TK_CHAR
 				{
-					$$.label = $1.label;
-					$$.traducao = "";
+					$$.label = gentempcode();
+					$$.tipo = "char";
+					add_var($$.label, "char", true, $$.label);
+					$$.traducao = "\t" + $$.label + " = " + $1.label + ";\n";
 				}
 				| TK_BOOL
 				{
+					string valor = ($1.label == "true") ? "1" : "0";
+					$$.label = gentempcode();
 					$$.tipo = "bool";
-					if ($1.label == "true")
-						$$.label = "1";
-					else
-						$$.label = "0";
-
-					$$.traducao = "";
+					add_var($$.label, "int", true, $$.label);
+					$$.traducao = "\t" + $$.label + " = " + valor + ";\n";
 				}
 				| E TK_AND E
 				{
-					if ($1.tipo != "bool" || $3.tipo != "bool") {
-        yyerror("Operador invalido para tipos nao booleanos");
-		exit(1);
-    }
+					if (!tab_logico.count($1.tipo) || !tab_logico.count($3.tipo)) {
+						yyerror("Operador '&&' invalido entre '" + $1.tipo + "' e '" + $3.tipo + "'");
+						exit(1);
+					}
 					$$.label = gentempcode();
 					
 					add_var($$.label, "int", true, $$.label);
@@ -248,10 +298,10 @@
 				}
 				| E TK_OR E
 				{
-					if ($1.tipo != "bool" || $3.tipo != "bool") {
-        yyerror("Operador invalido para tipos nao booleanos");
-		exit(1);
-    }
+					if (!tab_logico.count($1.tipo) || !tab_logico.count($3.tipo)) {
+						yyerror("Operador '||' invalido entre '" + $1.tipo + "' e '" + $3.tipo + "'");
+						exit(1);
+					}
 					$$.label = gentempcode();
 					add_var($$.label, "int", true, $$.label);
 
@@ -260,10 +310,10 @@
 				}
 				| TK_NOT E
 				{
-					if ($2.tipo != "bool") {
-        yyerror("Operador invalido para tipos nao booleanos");
-		exit(1);
-    }
+					if (!tab_logico.count($2.tipo)) {
+						yyerror("Operador '!' invalido para tipo '" + $2.tipo + "'");
+						exit(1);
+					}
 					$$.label = gentempcode();
 					$$.tipo = "bool";
 					add_var($$.label, "int", true, $$.label);
@@ -273,51 +323,93 @@
 				}
 				| E TK_GT E
 				{
+					if (!checar_relacional($1.tipo, $3.tipo)) {
+						yyerror("Operador '>' invalido entre '" + $1.tipo + "' e '" + $3.tipo + "'");
+						exit(1);
+					}
+					atributos esq1 = $1, dir1 = $3;
+					if (esq1.tipo == "int" && dir1.tipo == "float") esq1 = converter_p_float(esq1);
+					else if (esq1.tipo == "float" && dir1.tipo == "int") dir1 = converter_p_float(dir1);
 					$$.label = gentempcode();
+					$$.tipo = "bool";
 					add_var($$.label, "int", true, $$.label);
-
-					$$.traducao = $1.traducao + $3.traducao +
-						"\t" + $$.label + " = " + $1.label + " > " + $3.label + ";\n";
+					$$.traducao = esq1.traducao + dir1.traducao +
+						"\t" + $$.label + " = " + esq1.label + " > " + dir1.label + ";\n";
 				}
 				| E TK_LT E
 				{
+					if (!checar_relacional($1.tipo, $3.tipo)) {
+						yyerror("Operador '<' invalido entre '" + $1.tipo + "' e '" + $3.tipo + "'");
+						exit(1);
+					}
+					atributos esq2 = $1, dir2 = $3;
+					if (esq2.tipo == "int" && dir2.tipo == "float") esq2 = converter_p_float(esq2);
+					else if (esq2.tipo == "float" && dir2.tipo == "int") dir2 = converter_p_float(dir2);
 					$$.label = gentempcode();
-					add_var($$.label, "int", true, $$.label);
 					$$.tipo = "bool";
-					$$.traducao = $1.traducao + $3.traducao +
-						"\t" + $$.label + " = " + $1.label + " < " + $3.label + ";\n";
+					add_var($$.label, "int", true, $$.label);
+					$$.traducao = esq2.traducao + dir2.traducao +
+						"\t" + $$.label + " = " + esq2.label + " < " + dir2.label + ";\n";
 				}
 				| E TK_GE E
 				{
+					if (!checar_relacional($1.tipo, $3.tipo)) {
+						yyerror("Operador '>=' invalido entre '" + $1.tipo + "' e '" + $3.tipo + "'");
+						exit(1);
+					}
+					atributos esq3 = $1, dir3 = $3;
+					if (esq3.tipo == "int" && dir3.tipo == "float") esq3 = converter_p_float(esq3);
+					else if (esq3.tipo == "float" && dir3.tipo == "int") dir3 = converter_p_float(dir3);
 					$$.label = gentempcode();
+					$$.tipo = "bool";
 					add_var($$.label, "int", true, $$.label);
-
-					$$.traducao = $1.traducao + $3.traducao +
-						"\t" + $$.label + " = " + $1.label + " >= " + $3.label + ";\n";
+					$$.traducao = esq3.traducao + dir3.traducao +
+						"\t" + $$.label + " = " + esq3.label + " >= " + dir3.label + ";\n";
 				}
 				| E TK_LE E
 				{
+					if (!checar_relacional($1.tipo, $3.tipo)) {
+						yyerror("Operador '<=' invalido entre '" + $1.tipo + "' e '" + $3.tipo + "'");
+						exit(1);
+					}
+					atributos esq4 = $1, dir4 = $3;
+					if (esq4.tipo == "int" && dir4.tipo == "float") esq4 = converter_p_float(esq4);
+					else if (esq4.tipo == "float" && dir4.tipo == "int") dir4 = converter_p_float(dir4);
 					$$.label = gentempcode();
+					$$.tipo = "bool";
 					add_var($$.label, "int", true, $$.label);
-
-					$$.traducao = $1.traducao + $3.traducao +
-						"\t" + $$.label + " = " + $1.label + " <= " + $3.label + ";\n";
+					$$.traducao = esq4.traducao + dir4.traducao +
+						"\t" + $$.label + " = " + esq4.label + " <= " + dir4.label + ";\n";
 				}
 				| E TK_EQ E
 				{
+					if (!checar_igualdade($1.tipo, $3.tipo)) {
+						yyerror("Operador '==' invalido entre '" + $1.tipo + "' e '" + $3.tipo + "'");
+						exit(1);
+					}
+					atributos esq5 = $1, dir5 = $3;
+					if (esq5.tipo == "int" && dir5.tipo == "float") esq5 = converter_p_float(esq5);
+					else if (esq5.tipo == "float" && dir5.tipo == "int") dir5 = converter_p_float(dir5);
 					$$.label = gentempcode();
+					$$.tipo = "bool";
 					add_var($$.label, "int", true, $$.label);
-
-					$$.traducao = $1.traducao + $3.traducao +
-						"\t" + $$.label + " = " + $1.label + " == " + $3.label + ";\n";
+					$$.traducao = esq5.traducao + dir5.traducao +
+						"\t" + $$.label + " = " + esq5.label + " == " + dir5.label + ";\n";
 				}
 				| E TK_NE E
 				{
+					if (!checar_igualdade($1.tipo, $3.tipo)) {
+						yyerror("Operador '!=' invalido entre '" + $1.tipo + "' e '" + $3.tipo + "'");
+						exit(1);
+					}
+					atributos esq6 = $1, dir6 = $3;
+					if (esq6.tipo == "int" && dir6.tipo == "float") esq6 = converter_p_float(esq6);
+					else if (esq6.tipo == "float" && dir6.tipo == "int") dir6 = converter_p_float(dir6);
 					$$.label = gentempcode();
+					$$.tipo = "bool";
 					add_var($$.label, "int", true, $$.label);
-
-					$$.traducao = $1.traducao + $3.traducao +
-						"\t" + $$.label + " = " + $1.label + " != " + $3.label + ";\n";
+					$$.traducao = esq6.traducao + dir6.traducao +
+						"\t" + $$.label + " = " + esq6.label + " != " + dir6.label + ";\n";
 				}
 				| TK_CAST_INT E
 				{
@@ -378,12 +470,12 @@
 
 					atributos expressao = $4;
 
-					if($1.label == "int" && expressao.tipo == "float"){
-						yyerror("Nao pode atribuir float em variavel int");
+					string acao = checar_atribuicao($1.label, expressao.tipo);
+					if(acao == "") {
+						yyerror("Atribuicao invalida: nao e possivel atribuir '" + expressao.tipo + "' em variavel do tipo '" + $1.label + "'");
 						exit(1);
 					}
-
-					if($1.label == "float" && expressao.tipo == "int"){
+					if(acao == "promove") {
 						expressao = converter_p_float(expressao);
 					}
 
@@ -405,12 +497,13 @@
 
 					atributos expressao = $3;
 
-					if(a.tipo == "float" && expressao.tipo == "int"){
-						expressao = converter_p_float(expressao);
+					string acao = checar_atribuicao(a.tipo, expressao.tipo);
+					if(acao == "") {
+						yyerror("Atribuicao invalida: nao e possivel atribuir '" + expressao.tipo + "' em variavel '" + $1.label + "' do tipo '" + a.tipo + "'");
+						exit(1);
 					}
-
-					if(a.tipo == "int" && expressao.tipo == "float"){
-						expressao.tipo = "int";
+					if(acao == "promove") {
+						expressao = converter_p_float(expressao);
 					}
 
 					a.valor = $3.label;
@@ -482,13 +575,24 @@
 		return false;
 	}
 
-	string tipo_result(string tipo1, string tipo2){
+	string checar_aritmetico(string t1, string t2) {
+		auto it = tab_aritm.find({t1, t2});
+		if (it == tab_aritm.end()) return "";
+		return it->second;
+	}
 
-		if(tipo1 == "float" || tipo2 == "float"){
-			return "float";
-		}
+	bool checar_relacional(string t1, string t2) {
+		return tab_relac.count({t1, t2}) > 0;
+	}
 
-		return "int";
+	bool checar_igualdade(string t1, string t2) {
+		return tab_igual.count({t1, t2}) > 0;
+	}
+
+	string checar_atribuicao(string tv, string te) {
+		auto it = tab_atrib.find({tv, te});
+		if (it == tab_atrib.end()) return "";
+		return it->second;
 	}
 
 	atributos converter_p_float(atributos e){

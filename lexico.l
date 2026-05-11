@@ -32,6 +32,7 @@ BOOL (true|false)
 "(float)"   { return TK_CAST_FLOAT; }
 
 {DELIM} 	{}
+"\r"        {}
 
 [+-]			{ return *yytext; }
 [*/]			{ return *yytext; }
