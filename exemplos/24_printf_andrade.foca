@@ -1,0 +1,11 @@
+int x = 10;
+{
+    int x = 5; 
+    
+    {
+        int x = 2;
+        printf("%d\n", x); 
+    }
+    
+    printf("%d\n", x); 
+}

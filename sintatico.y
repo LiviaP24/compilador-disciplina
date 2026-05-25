@@ -86,6 +86,7 @@
 	%token TK_AND TK_OR TK_NOT
 	%token TK_GT TK_LT TK_GE TK_LE TK_EQ TK_NE
 	%token TK_CAST_INT TK_CAST_FLOAT
+	%token TK_PRINTF TK_STRING
 
 	%start S
 
@@ -140,6 +141,16 @@
 				{
 					$$.traducao = $1.traducao;
 				}
+				| TK_PRINTF '(' TK_STRING ')' ';'
+				{
+					// printf sem argumentos adicionais: printf("texto\n")
+					$$.traducao = "\tprintf(" + $3.label + ");\n";
+				}
+				| TK_PRINTF '(' TK_STRING ',' printf_args ')' ';'
+				{
+					// printf com argumentos: printf("%d\n", expr)
+					$$.traducao = $5.traducao + "\tprintf(" + $3.label + ", " + $5.label + ");\n";
+				}
 				;
 
 	BLOCO		: '{' { entra_escopo(); } cmds '}'
@@ -150,6 +161,18 @@
 				| '{' '}'
 				{
 					$$.traducao = "";
+				}
+				;
+
+	printf_args	: E
+				{
+					$$.traducao = $1.traducao;
+					$$.label    = $1.label;
+				}
+				| printf_args ',' E
+				{
+					$$.traducao = $1.traducao + $3.traducao;
+					$$.label    = $1.label + ", " + $3.label;
 				}
 				;
 

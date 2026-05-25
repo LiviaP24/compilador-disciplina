@@ -13,8 +13,9 @@ DELIM {ESPACO}+
 NUM {DIGITO}+
 FLOAT ({DIGITO}+"."{DIGITO}*)|({DIGITO}*"."{DIGITO}+)
 VARIAVEL {LETTER}+({LETTER}|{DIGITO})*
-CHAR \'([^\\\']|\\.)\'
+CHAR \'([^\\\']|\\.)*\'
 BOOL (true|false)
+STRING \"([^\\\"]|\\.)*\"
 
 %%
 
@@ -34,15 +35,18 @@ BOOL (true|false)
 {DELIM} 	{}
 "\r"        {}
 
-[+-]			{ return *yytext; }
-[*/]			{ return *yytext; }
+[+-]		{ return *yytext; }
+[*/]		{ return *yytext; }
 [()]            { return *yytext; }
 [=]             { return *yytext; }
-[;]             { return *yytext; }
+[;,]            { return *yytext; }
 [{}]            { return *yytext; }
+
+"printf"    { return TK_PRINTF; }
 
 {BOOL}     { yylval.label = yytext; return TK_BOOL; }
 {CHAR}      { yylval.label = yytext; return TK_CHAR; }
+{STRING}    { yylval.label = yytext; return TK_STRING; }
 {FLOAT}     { yylval.label = yytext; return TK_FLOAT__; }
 {NUM}		{ yylval.label = yytext; return TK_NUM; }
 {TIPO}      { yylval.label = yytext; return TK_TIPO;  }

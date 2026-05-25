@@ -24,6 +24,9 @@ translate: glf
 run: glf
 		./glf < $(FILE) > /tmp/foca_output.c && gcc /tmp/foca_output.c -o /tmp/foca_output && /tmp/foca_output
 
+runwin: glf
+		./glf < $(FILE) > saida.c && gcc saida.c -o saida.exe && ./saida.exe
+
 test: glf
 	@pass=0; fail=0; \
 	for f in exemplos/*.foca; do \
