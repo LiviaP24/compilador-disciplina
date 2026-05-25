@@ -2,6 +2,7 @@
 	#include <iostream>
 	#include <string>
 	#include <map>
+	#include <vector>
 
 	#define YYSTYPE atributos
 
@@ -27,7 +28,7 @@
 		string valor;
 	};
 
-	map<string, variavel> tabela;
+	vector<map<string, variavel>> pilha_escopos;
 
 	// Tabela de tipos: chave "operacao:tipo1:tipo2", valor = resultado
 	map<string, string> tab_tipos = {
@@ -64,6 +65,9 @@
 	void add_var(string, string, bool, string);
 	string chave_temp();
 	bool verificacao_tabela(string);
+	variavel buscar_var(string);
+	void entra_escopo();
+	void sai_escopo();
 	string checar_aritmetico(string t1, string t2);
 	bool   checar_relacional(string t1, string t2);
 	bool   checar_igualdade(string t1, string t2);
@@ -132,7 +136,22 @@
 				{
 					$$.traducao = $1.traducao;
 				}
-				;	
+				| BLOCO
+				{
+					$$.traducao = $1.traducao;
+				}
+				;
+
+	BLOCO		: '{' { entra_escopo(); } cmds '}'
+				{
+					sai_escopo();
+					$$.traducao = $3.traducao;
+				}
+				| '{' '}'
+				{
+					$$.traducao = "";
+				}
+				;
 
 	E 			: E '+' E
 				{
@@ -257,7 +276,7 @@
 						yyerror("Variavel nao declarada");
 						exit(1);
 					}
-					variavel x = tabela[$1.label];
+					variavel x = buscar_var($1.label);
 
 					$$.label = x.temp;
 					$$.tipo = x.tipo;
@@ -447,8 +466,9 @@
 				;
 	D			: TK_TIPO TK_VARIAVEL
 				{
-					if(verificacao_tabela($2.label)){
-						yyerror("Variavel declarada");
+					// Verifica redeclaracao apenas no escopo atual
+					if(pilha_escopos.back().count($2.label)){
+						yyerror("Variavel ja declarada neste escopo: " + $2.label);
 						exit(1);
 					}
 
@@ -458,8 +478,9 @@
 				}
 				| TK_TIPO TK_VARIAVEL '=' E
 				{
-					if(verificacao_tabela($2.label)){
-						yyerror("Variavel ja declarada");
+					// Verifica redeclaracao apenas no escopo atual
+					if(pilha_escopos.back().count($2.label)){
+						yyerror("Variavel ja declarada neste escopo: " + $2.label);
 						exit(1);
 					}
 
@@ -476,9 +497,6 @@
 
 					string temp = gentempcode();
 					add_var($2.label, $1.label, false, temp);
-					variavel a = tabela[$2.label];
-					a.valor = expressao.label;
-					tabela[$2.label] = a;
 					$$.traducao = expressao.traducao + "\t" + temp + " = " + expressao.label + ";\n";
 				}
 				| TK_VARIAVEL '=' E
@@ -488,7 +506,7 @@
 						exit(1);
 					}
 
-					variavel a = tabela[$1.label];
+					variavel a = buscar_var($1.label);
 
 					atributos expressao = $3;
 
@@ -501,8 +519,6 @@
 						expressao = converter_p_float(expressao);
 					}
 
-					a.valor = $3.label;
-					tabela[$1.label] = a;
 					$$.traducao = expressao.traducao + "\t" + a.temp + " = " + expressao.label + ";\n";
 				} 
 				;
@@ -524,50 +540,60 @@
 		return "%¬" + to_string(var_temp);
 	}
 
-	void add_var(string nome, string tipo, bool temp, string vars_temp){
+	void entra_escopo() {
+		pilha_escopos.push_back({});
+	}
 
-		
+	void sai_escopo() {
+		pilha_escopos.pop_back();
+	}
 
-		if(!temp){
+	bool verificacao_tabela(string nome) {
+		// Percorre do escopo mais interno ao mais externo
+		for (int i = pilha_escopos.size() - 1; i >= 0; i--) {
+			if (pilha_escopos[i].find(nome) != pilha_escopos[i].end())
+				return true;
+		}
+		return false;
+	}
 
-			if(tabela.find(nome) != tabela.end()){
-				yyerror("Variavel ja declarada");
+	variavel buscar_var(string nome) {
+		for (int i = pilha_escopos.size() - 1; i >= 0; i--) {
+			auto it = pilha_escopos[i].find(nome);
+			if (it != pilha_escopos[i].end())
+				return it->second;
+		}
+		yyerror("Variavel nao declarada: " + nome);
+		exit(1);
+	}
+
+	void add_var(string nome, string tipo, bool temp, string vars_temp) {
+
+		string tipo_c = (tipo == "bool") ? "int" : tipo;
+
+		if (!temp) {
+			// Verifica redeclaracao apenas no escopo atual (topo da pilha)
+			if (pilha_escopos.back().find(nome) != pilha_escopos.back().end()) {
+				yyerror("Variavel ja declarada neste escopo: " + nome);
 				exit(1);
 			}
 
 			variavel v;
 			v.tipo = tipo;
-			if(tipo == "bool"){
-			tipo = "int";
-		}
 			v.valor = "";
 			v.temp = vars_temp;
 
-			tabela[nome] = v;
-			var += "\t" + tipo + " " + vars_temp + ";" + "\n";
-		}
-		else {
+			pilha_escopos.back()[nome] = v;
+			var += "\t" + tipo_c + " " + vars_temp + ";\n";
+		} else {
 			variavel v;
 			v.tipo = tipo;
-			if(tipo == "bool"){
-			tipo = "int";
-		}
 			v.valor = "";
 			v.temp = nome;
 
-			tabela[chave_temp()] = v;
-
-			var += "\t" + tipo + " " + vars_temp + ";" + "\n";
+			pilha_escopos.back()[chave_temp()] = v;
+			var += "\t" + tipo_c + " " + vars_temp + ";\n";
 		}
-	}
-
-	bool verificacao_tabela(string nome){
-		if(tabela.find(nome) != tabela.end())
-		{
-			return true;
-		}
-
-		return false;
 	}
 
 	string checar_aritmetico(string t1, string t2) {
@@ -632,6 +658,7 @@
 	{
 		var_temp_qnt = 0;
 		var_temp = 0;
+		entra_escopo(); // escopo global
 
 		if (yyparse() == 0)
 			cout << codigo_gerado;
