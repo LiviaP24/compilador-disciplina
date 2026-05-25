@@ -2,7 +2,6 @@
 	#include <iostream>
 	#include <string>
 	#include <map>
-	#include <set>
 
 	#define YYSTYPE atributos
 
@@ -30,38 +29,33 @@
 
 	map<string, variavel> tabela;
 
-	// Tabelas de verificacao de tipos
-	map<pair<string,string>, string> tab_aritm = {
-		{{"int",   "int"},   "int"},
-		{{"int",   "float"}, "float"},
-		{{"float", "int"},   "float"},
-		{{"float", "float"}, "float"},
-	};
-
-	set<pair<string,string>> tab_relac = {
-		{"int",   "int"},
-		{"int",   "float"},
-		{"float", "int"},
-		{"float", "float"},
-	};
-
-	set<pair<string,string>> tab_igual = {
-		{"int",   "int"},
-		{"int",   "float"},
-		{"float", "int"},
-		{"float", "float"},
-		{"bool",  "bool"},
-		{"char",  "char"},
-	};
-
-	set<string> tab_logico = {"bool"};
-
-	map<pair<string,string>, string> tab_atrib = {
-		{{"int",   "int"},   "ok"},
-		{{"float", "float"}, "ok"},
-		{{"bool",  "bool"},  "ok"},
-		{{"char",  "char"},  "ok"},
-		{{"float", "int"},   "promove"},
+	// Tabela de tipos: chave "operacao:tipo1:tipo2", valor = resultado
+	map<string, string> tab_tipos = {
+		// Aritmetica (+, -, *, /)     tipo1     tipo2     resultado
+		{"aritm:int:int",     "int"},
+		{"aritm:int:float",   "float"},
+		{"aritm:float:int",   "float"},
+		{"aritm:float:float", "float"},
+		// Relacional (>, <, >=, <=)   tipo1     tipo2     resultado
+		{"relac:int:int",     "bool"},
+		{"relac:int:float",   "bool"},
+		{"relac:float:int",   "bool"},
+		{"relac:float:float", "bool"},
+		// Igualdade (==, !=)          tipo1     tipo2     resultado
+		{"igual:int:int",     "bool"},
+		{"igual:int:float",   "bool"},
+		{"igual:float:int",   "bool"},
+		{"igual:float:float", "bool"},
+		{"igual:bool:bool",   "bool"},
+		{"igual:char:char",   "bool"},
+		// Logico (&&, ||, !)          tipo      resultado
+		{"logico:bool:",      "bool"},
+		// Atribuicao                  var       expr      resultado
+		{"atrib:int:int",     "ok"},
+		{"atrib:float:float", "ok"},
+		{"atrib:bool:bool",   "ok"},
+		{"atrib:char:char",   "ok"},
+		{"atrib:float:int",   "promove"},
 	};
 
 	int yylex(void);
@@ -73,6 +67,7 @@
 	string checar_aritmetico(string t1, string t2);
 	bool   checar_relacional(string t1, string t2);
 	bool   checar_igualdade(string t1, string t2);
+	bool   checar_logico(string t);
 	string checar_atribuicao(string tv, string te);
 	atributos converter_p_float(atributos e);
 	atributos converter_p_int(atributos e);
@@ -285,7 +280,7 @@
 				}
 				| E TK_AND E
 				{
-					if (!tab_logico.count($1.tipo) || !tab_logico.count($3.tipo)) {
+					if (!checar_logico($1.tipo) || !checar_logico($3.tipo)) {
 						yyerror("Operador '&&' invalido entre '" + $1.tipo + "' e '" + $3.tipo + "'");
 						exit(1);
 					}
@@ -298,7 +293,7 @@
 				}
 				| E TK_OR E
 				{
-					if (!tab_logico.count($1.tipo) || !tab_logico.count($3.tipo)) {
+					if (!checar_logico($1.tipo) || !checar_logico($3.tipo)) {
 						yyerror("Operador '||' invalido entre '" + $1.tipo + "' e '" + $3.tipo + "'");
 						exit(1);
 					}
@@ -310,7 +305,7 @@
 				}
 				| TK_NOT E
 				{
-					if (!tab_logico.count($2.tipo)) {
+					if (!checar_logico($2.tipo)) {
 						yyerror("Operador '!' invalido para tipo '" + $2.tipo + "'");
 						exit(1);
 					}
@@ -576,23 +571,25 @@
 	}
 
 	string checar_aritmetico(string t1, string t2) {
-		auto it = tab_aritm.find({t1, t2});
-		if (it == tab_aritm.end()) return "";
-		return it->second;
+		auto it = tab_tipos.find("aritm:" + t1 + ":" + t2);
+		return (it != tab_tipos.end()) ? it->second : "";
 	}
 
 	bool checar_relacional(string t1, string t2) {
-		return tab_relac.count({t1, t2}) > 0;
+		return tab_tipos.count("relac:" + t1 + ":" + t2);
 	}
 
 	bool checar_igualdade(string t1, string t2) {
-		return tab_igual.count({t1, t2}) > 0;
+		return tab_tipos.count("igual:" + t1 + ":" + t2);
+	}
+
+	bool checar_logico(string t) {
+		return tab_tipos.count("logico:" + t + ":");
 	}
 
 	string checar_atribuicao(string tv, string te) {
-		auto it = tab_atrib.find({tv, te});
-		if (it == tab_atrib.end()) return "";
-		return it->second;
+		auto it = tab_tipos.find("atrib:" + tv + ":" + te);
+		return (it != tab_tipos.end()) ? it->second : "";
 	}
 
 	atributos converter_p_float(atributos e){
