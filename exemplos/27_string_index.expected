@@ -3,17 +3,23 @@
 #include <stdlib.h>
 #include <string.h>
 int main(void) {
-	char * t1;
-	int t2;
-	char t3;
-	char t4;
+        char * t1;
+        int t2;
+        int t3;
+        int t4;
+        int t5;
+        char t6;
+        char t7;
 
-	t1 = (char*) malloc(4 * sizeof(char));
-	strcpy(t1, "abc");
-	t2 = 1;
-	t3 = t1[t2];
-	t4 = t3;
-	printf("%s\n", t1);
-	printf("%c\n", t4);
-	return 0;
+        t2 = 4;
+        t3 = sizeof(char);
+        t4 = t2 * t3;
+        t1 = (char*) malloc(t4);
+        strcpy(t1, "abc");
+        t5 = 1;
+        t6 = t1[t5];
+        t7 = t6;
+        printf("%s\n", t1);
+        printf("%c\n", t7);
+        return 0;
 }

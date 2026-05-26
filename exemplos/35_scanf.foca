@@ -1,0 +1,9 @@
+int idade;
+float altura;
+string nome;
+char sexo;
+scanf("%s ", nome);
+scanf("%c ", sexo);
+scanf("%d ", idade);
+scanf("%f", altura);
+printf("%s do sexo %c tem %d anos e %.2f de altura\n", nome, sexo, idade, altura);

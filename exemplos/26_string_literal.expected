@@ -3,10 +3,16 @@
 #include <stdlib.h>
 #include <string.h>
 int main(void) {
-	char * t1;
+        char * t1;
+        int t2;
+        int t3;
+        int t4;
 
-	t1 = (char*) malloc(6 * sizeof(char));
-	strcpy(t1, "hello");
-	printf("%s\n", t1);
-	return 0;
+        t2 = 6;
+        t3 = sizeof(char);
+        t4 = t2 * t3;
+        t1 = (char*) malloc(t4);
+        strcpy(t1, "hello");
+        printf("%s\n", t1);
+        return 0;
 }

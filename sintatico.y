@@ -67,6 +67,7 @@
 	string gentempcode();
 	string genLabel();
 	string genContaChars(string, string);
+	string genMallocStr(string, string, string);
 	void add_var(string, string, bool, string);
 	string chave_temp();
 	bool verificacao_tabela(string);
@@ -91,7 +92,7 @@
 	%token TK_AND TK_OR TK_NOT
 	%token TK_GT TK_LT TK_GE TK_LE TK_EQ TK_NE
 	%token TK_CAST_INT TK_CAST_FLOAT
-	%token TK_PRINTF TK_STRING
+	%token TK_PRINTF TK_SCANF TK_STRING
 
 	%start S
 
@@ -160,6 +161,20 @@
 					// printf com argumentos: printf("%d\n", expr)
 					$$.traducao = $5.traducao + "\tprintf(" + $3.label + ", " + $5.label + ");\n";
 				}
+				| TK_SCANF '(' TK_STRING ')' ';'
+				{
+					// scanf sem argumentos: scanf("\n") — incomum mas valido
+					$$.traducao = "\tscanf(" + $3.label + ");\n";
+				}
+				| TK_SCANF '(' TK_STRING ',' scanf_args ')' ';'
+				{
+					// scanf com argumentos: scanf("%d", n) ou scanf("%s", s) etc.
+					// $5.traducao = pre-codigo (malloc 256 p/ strings)
+					// $5.tipo     = pos-codigo (redimensiona strings apos scanf)
+					$$.traducao = $5.traducao
+					            + "\tscanf(" + $3.label + ", " + $5.label + ");\n"
+					            + $5.tipo;
+				}
 				;
 
 	BLOCO		: '{' { entra_escopo(); } cmds '}'
@@ -185,6 +200,68 @@
 				}
 				;
 
+	// scanf_args acumula:
+	//   label    = argumentos para o scanf (ex: "&t1, t2, &t3")
+	//   traducao = pre-codigo: malloc 256 para variaveis string
+	//   tipo     = pos-codigo: conta + redimensiona strings apos o scanf
+	scanf_args	: TK_VARIAVEL
+				{
+					if (!verificacao_tabela($1.label)) {
+						yyerror("Variavel nao declarada: " + $1.label);
+						exit(1);
+					}
+					variavel sv = buscar_var($1.label);
+					if (sv.tipo == "string") {
+						string t_bsz = gentempcode(); add_var(t_bsz, "int",    true, t_bsz);
+						string t_tmp = gentempcode(); add_var(t_tmp, "string", true, t_tmp);
+						string t_cnt = gentempcode(); add_var(t_cnt, "int",    true, t_cnt);
+						string t_p1  = gentempcode(); add_var(t_p1,  "int",    true, t_p1);
+						$$.label    = sv.temp;
+						$$.traducao = "\tfree(" + sv.temp + ");\n"
+						            + genMallocStr("\t" + t_bsz + " = 256;\n", t_bsz, sv.temp);
+						$$.tipo     = "\t" + t_cnt + " = 0;\n"
+						            + genContaChars(sv.temp, t_cnt)
+						            + "\t" + t_tmp + " = " + sv.temp + ";\n"
+						            + genMallocStr("\t" + t_p1 + " = " + t_cnt + " + 1;\n", t_p1, sv.temp)
+						            + "\tstrcpy(" + sv.temp + ", " + t_tmp + ");\n"
+						            + "\tfree(" + t_tmp + ");\n";
+					} else {
+						$$.label    = "&" + sv.temp;
+						$$.traducao = "";
+						$$.tipo     = "";
+					}
+				}
+				| scanf_args ',' TK_VARIAVEL
+				{
+					if (!verificacao_tabela($3.label)) {
+						yyerror("Variavel nao declarada: " + $3.label);
+						exit(1);
+					}
+					variavel sv = buscar_var($3.label);
+					if (sv.tipo == "string") {
+						string t_bsz = gentempcode(); add_var(t_bsz, "int",    true, t_bsz);
+						string t_tmp = gentempcode(); add_var(t_tmp, "string", true, t_tmp);
+						string t_cnt = gentempcode(); add_var(t_cnt, "int",    true, t_cnt);
+						string t_p1  = gentempcode(); add_var(t_p1,  "int",    true, t_p1);
+						$$.label    = $1.label + ", " + sv.temp;
+						$$.traducao = $1.traducao
+						            + "\tfree(" + sv.temp + ");\n"
+						            + genMallocStr("\t" + t_bsz + " = 256;\n", t_bsz, sv.temp);
+						$$.tipo     = $1.tipo
+						            + "\t" + t_cnt + " = 0;\n"
+						            + genContaChars(sv.temp, t_cnt)
+						            + "\t" + t_tmp + " = " + sv.temp + ";\n"
+						            + genMallocStr("\t" + t_p1 + " = " + t_cnt + " + 1;\n", t_p1, sv.temp)
+						            + "\tstrcpy(" + sv.temp + ", " + t_tmp + ");\n"
+						            + "\tfree(" + t_tmp + ");\n";
+					} else {
+						$$.label    = $1.label + ", &" + sv.temp;
+						$$.traducao = $1.traducao;
+						$$.tipo     = $1.tipo;
+					}
+				}
+				;
+
 	E 			: E '+' E
 				{
 					atributos esquerda = $1;
@@ -202,12 +279,15 @@
 						$$.is_literal = false;
 						add_var($$.label, "string", true, $$.label);
 
+						string t_sum_ss = gentempcode(); add_var(t_sum_ss, "int", true, t_sum_ss);
+						string t_p1_ss  = gentempcode(); add_var(t_p1_ss,  "int", true, t_p1_ss);
 						$$.traducao = esquerda.traducao + direita.traducao +
 							"\t" + cnt1 + " = 0;\n" +
 							genContaChars(esquerda.label, cnt1) +
 							"\t" + cnt2 + " = 0;\n" +
 							genContaChars(direita.label, cnt2) +
-							"\t" + $$.label + " = (char*) malloc((" + cnt1 + " + " + cnt2 + " + 1) * sizeof(char));\n" +
+							genMallocStr("\t" + t_sum_ss + " = " + cnt1 + " + " + cnt2 + ";\n"
+							           + "\t" + t_p1_ss  + " = " + t_sum_ss + " + 1;\n", t_p1_ss, $$.label) +
 							"\tstrcpy(" + $$.label + ", " + esquerda.label + ");\n" +
 							"\tstrcat(" + $$.label + ", " + direita.label + ");\n";
 
@@ -221,14 +301,13 @@
 						$$.is_literal = false;
 						add_var($$.label, "string", true, $$.label);
 
-						string t_np1sc = gentempcode();
-						string t_nulsc = gentempcode();
-						add_var(t_np1sc, "int",  true, t_np1sc);
-						add_var(t_nulsc, "char", true, t_nulsc);
+						string t_p2sc  = gentempcode(); add_var(t_p2sc,  "int",  true, t_p2sc);
+						string t_np1sc = gentempcode(); add_var(t_np1sc, "int",  true, t_np1sc);
+						string t_nulsc = gentempcode(); add_var(t_nulsc, "char", true, t_nulsc);
 						$$.traducao = esquerda.traducao + direita.traducao +
 							"\t" + cnt + " = 0;\n" +
 							genContaChars(esquerda.label, cnt) +
-							"\t" + $$.label + " = (char*) malloc((" + cnt + " + 2) * sizeof(char));\n" +
+							genMallocStr("\t" + t_p2sc + " = " + cnt + " + 2;\n", t_p2sc, $$.label) +
 							"\tstrcpy(" + $$.label + ", " + esquerda.label + ");\n" +
 							"\t" + t_np1sc + " = " + cnt + " + 1;\n" +
 							"\t" + t_nulsc + " = '\\0';\n" +
@@ -245,16 +324,14 @@
 						$$.is_literal = false;
 						add_var($$.label, "string", true, $$.label);
 
-						string t_i0cs = gentempcode();
-						string t_i1cs = gentempcode();
-						string t_nlcs = gentempcode();
-						add_var(t_i0cs, "int",  true, t_i0cs);
-						add_var(t_i1cs, "int",  true, t_i1cs);
-						add_var(t_nlcs, "char", true, t_nlcs);
+						string t_p2cs  = gentempcode(); add_var(t_p2cs,  "int",  true, t_p2cs);
+						string t_i0cs  = gentempcode(); add_var(t_i0cs,  "int",  true, t_i0cs);
+						string t_i1cs  = gentempcode(); add_var(t_i1cs,  "int",  true, t_i1cs);
+						string t_nlcs  = gentempcode(); add_var(t_nlcs,  "char", true, t_nlcs);
 						$$.traducao = esquerda.traducao + direita.traducao +
 							"\t" + cnt + " = 0;\n" +
 							genContaChars(direita.label, cnt) +
-							"\t" + $$.label + " = (char*) malloc((" + cnt + " + 2) * sizeof(char));\n" +
+							genMallocStr("\t" + t_p2cs + " = " + cnt + " + 2;\n", t_p2cs, $$.label) +
 							"\t" + t_i0cs + " = 0;\n" +
 							"\t" + t_i1cs + " = 1;\n" +
 							"\t" + t_nlcs + " = '\\0';\n" +
@@ -269,16 +346,13 @@
 						$$.is_literal = false;
 						add_var($$.label, "string", true, $$.label);
 
-						string t_i0cc = gentempcode();
-						string t_i1cc = gentempcode();
-						string t_i2cc = gentempcode();
-						string t_nlcc = gentempcode();
-						add_var(t_i0cc, "int",  true, t_i0cc);
-						add_var(t_i1cc, "int",  true, t_i1cc);
-						add_var(t_i2cc, "int",  true, t_i2cc);
-						add_var(t_nlcc, "char", true, t_nlcc);
+						string t_sz3   = gentempcode(); add_var(t_sz3,   "int",  true, t_sz3);
+						string t_i0cc  = gentempcode(); add_var(t_i0cc,  "int",  true, t_i0cc);
+						string t_i1cc  = gentempcode(); add_var(t_i1cc,  "int",  true, t_i1cc);
+						string t_i2cc  = gentempcode(); add_var(t_i2cc,  "int",  true, t_i2cc);
+						string t_nlcc  = gentempcode(); add_var(t_nlcc,  "char", true, t_nlcc);
 						$$.traducao = esquerda.traducao + direita.traducao +
-							"\t" + $$.label + " = (char*) malloc(3 * sizeof(char));\n" +
+							genMallocStr("\t" + t_sz3 + " = 3;\n", t_sz3, $$.label) +
 							"\t" + t_i0cc + " = 0;\n" +
 							"\t" + t_i1cc + " = 1;\n" +
 							"\t" + t_i2cc + " = 2;\n" +
@@ -635,11 +709,10 @@
 
 					if ($1.label == "string") {
 						// Aloca string vazia (1 byte) — reatribuicao futura dara free+realloc
-						string t_idx0a = gentempcode();
-						string t_nul0a = gentempcode();
-						add_var(t_idx0a, "int",  true, t_idx0a);
-						add_var(t_nul0a, "char", true, t_nul0a);
-						$$.traducao = "\t" + temp + " = (char*) malloc(1 * sizeof(char));\n"
+						string t_cnt0  = gentempcode(); add_var(t_cnt0,  "int",  true, t_cnt0);
+						string t_idx0a = gentempcode(); add_var(t_idx0a, "int",  true, t_idx0a);
+						string t_nul0a = gentempcode(); add_var(t_nul0a, "char", true, t_nul0a);
+						$$.traducao = genMallocStr("\t" + t_cnt0 + " = 1;\n", t_cnt0, temp)
 						           + "\t" + t_idx0a + " = 0;\n"
 						           + "\t" + t_nul0a + " = '\\0';\n"
 						           + "\t" + temp + "[" + t_idx0a + "] = " + t_nul0a + ";\n";
@@ -665,17 +738,18 @@
 						if ($4.is_literal) {
 							// Tamanho exato calculado em compile-time (label inclui as aspas)
 							int tamanho = (int)$4.label.length() - 1;
+							string t_sz_li = gentempcode(); add_var(t_sz_li, "int", true, t_sz_li);
 							$$.traducao = $4.traducao +
-								"\t" + temp + " = (char*) malloc(" + to_string(tamanho) + " * sizeof(char));\n" +
+								genMallocStr("\t" + t_sz_li + " = " + to_string(tamanho) + ";\n", t_sz_li, temp) +
 								"\tstrcpy(" + temp + ", " + $4.label + ");\n";
 						} else {
-							// Tamanho desconhecido: while no codigo gerado conta sem strlen
-							string cnt = gentempcode();
-							add_var(cnt, "int", true, cnt);
+							// Tamanho desconhecido: conta chars sem strlen
+							string cnt    = gentempcode(); add_var(cnt,    "int", true, cnt);
+							string t_p1_d = gentempcode(); add_var(t_p1_d, "int", true, t_p1_d);
 							$$.traducao = $4.traducao +
 								"\t" + cnt + " = 0;\n" +
 								genContaChars($4.label, cnt) +
-								"\t" + temp + " = (char*) malloc((" + cnt + " + 1) * sizeof(char));\n" +
+								genMallocStr("\t" + t_p1_d + " = " + cnt + " + 1;\n", t_p1_d, temp) +
 								"\tstrcpy(" + temp + ", " + $4.label + ");\n";
 						}
 					} else {
@@ -710,19 +784,20 @@
 						if ($3.is_literal) {
 							// Tamanho exato calculado em compile-time
 							int tamanho = (int)$3.label.length() - 1;
+							string t_sz_rl = gentempcode(); add_var(t_sz_rl, "int", true, t_sz_rl);
 							$$.traducao = $3.traducao +
 								"\tfree(" + a.temp + ");\n" +
-								"\t" + a.temp + " = (char*) malloc(" + to_string(tamanho) + " * sizeof(char));\n" +
+								genMallocStr("\t" + t_sz_rl + " = " + to_string(tamanho) + ";\n", t_sz_rl, a.temp) +
 								"\tstrcpy(" + a.temp + ", " + $3.label + ");\n";
 						} else {
 							// Contagem em runtime sem strlen
-							string cnt = gentempcode();
-							add_var(cnt, "int", true, cnt);
+							string cnt    = gentempcode(); add_var(cnt,    "int", true, cnt);
+							string t_p1_r = gentempcode(); add_var(t_p1_r, "int", true, t_p1_r);
 							$$.traducao = $3.traducao +
 								"\t" + cnt + " = 0;\n" +
 								genContaChars($3.label, cnt) +
 								"\tfree(" + a.temp + ");\n" +
-								"\t" + a.temp + " = (char*) malloc((" + cnt + " + 1) * sizeof(char));\n" +
+								genMallocStr("\t" + t_p1_r + " = " + cnt + " + 1;\n", t_p1_r, a.temp) +
 								"\tstrcpy(" + a.temp + ", " + $3.label + ");\n";
 						}
 					} else {
@@ -757,6 +832,20 @@
 	{
 		label_qnt++;
 		return "L" + to_string(label_qnt);
+	}
+
+	// Gera codigo de 3 enderecos para: result = (char*) malloc(count * sizeof(char))
+	// count_code: codigo que coloca o tamanho em count_temp
+	// count_temp: temporario que contem o numero de chars
+	// result_label: onde armazenar o ponteiro resultante
+	string genMallocStr(string count_code, string count_temp, string result_label)
+	{
+		string t_szof   = gentempcode(); add_var(t_szof,   "int", true, t_szof);
+		string t_nbytes = gentempcode(); add_var(t_nbytes, "int", true, t_nbytes);
+		return count_code
+			+ "\t" + t_szof   + " = sizeof(char);\n"
+			+ "\t" + t_nbytes + " = " + count_temp + " * " + t_szof + ";\n"
+			+ "\t" + result_label + " = (char*) malloc(" + t_nbytes + ");\n";
 	}
 
 	string genContaChars(string str_label, string cnt_label)

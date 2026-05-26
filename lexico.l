@@ -43,6 +43,7 @@ STRING \"([^\\\"]|\\.)*\"
 [{}]            { return *yytext; }
 [\[\]]          { return *yytext; }
 
+"scanf"     { return TK_SCANF; }
 "printf"    { return TK_PRINTF; }
 
 {BOOL}     { yylval.label = yytext; return TK_BOOL; }
