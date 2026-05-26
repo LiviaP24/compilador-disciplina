@@ -1,0 +1,2 @@
+string s = "abc";
+char c = s[3.14];

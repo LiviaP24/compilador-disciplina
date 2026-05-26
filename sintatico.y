@@ -13,12 +13,15 @@
 	int linha = 1;
 	string var;
 	string codigo_gerado;
+	bool usa_string = false;
+	int label_qnt = 0;
 
 	struct atributos
 	{
 		string label;
 		string traducao;
 		string tipo;
+		bool is_literal = false;
 	};
 
 	struct variavel
@@ -62,6 +65,8 @@
 	int yylex(void);
 	void yyerror(string);
 	string gentempcode();
+	string genLabel();
+	string genContaChars(string, string);
 	void add_var(string, string, bool, string);
 	string chave_temp();
 	bool verificacao_tabela(string);
@@ -105,8 +110,12 @@
 	S 			: cmds
 				{
 					codigo_gerado = "/*Compilador FOCA*/\n"
-									"#include <stdio.h>\n"
-									"int main(void) {\n";
+									"#include <stdio.h>\n";
+					if (usa_string) {
+						codigo_gerado += "#include <stdlib.h>\n";
+						codigo_gerado += "#include <string.h>\n";
+					}
+					codigo_gerado += "int main(void) {\n";
 					
 					codigo_gerado += var;
 
@@ -181,21 +190,120 @@
 					atributos esquerda = $1;
 					atributos direita = $3;
 
-					string tipoFinal = checar_aritmetico(esquerda.tipo, direita.tipo);
-					if(tipoFinal == "") {
-						yyerror("Operacao aritmetica invalida entre '" + esquerda.tipo + "' e '" + direita.tipo + "'");
-						exit(1);
-					}
-					if(tipoFinal == "float") {
-						esquerda = converter_p_float(esquerda);
-						direita = converter_p_float(direita);
-					}
+					if (esquerda.tipo == "string" && direita.tipo == "string") {
+						// Concatenacao string + string
+						string cnt1 = gentempcode();
+						string cnt2 = gentempcode();
+						add_var(cnt1, "int", true, cnt1);
+						add_var(cnt2, "int", true, cnt2);
 
-					$$.label = gentempcode();
-					$$.tipo = tipoFinal;
-					add_var($$.label, tipoFinal, true, $$.label);
-					$$.traducao = esquerda.traducao + direita.traducao + "\t" + $$.label +
-						" = " + esquerda.label + " + " + direita.label + ";\n";
+						$$.label = gentempcode();
+						$$.tipo = "string";
+						$$.is_literal = false;
+						add_var($$.label, "string", true, $$.label);
+
+						$$.traducao = esquerda.traducao + direita.traducao +
+							"\t" + cnt1 + " = 0;\n" +
+							genContaChars(esquerda.label, cnt1) +
+							"\t" + cnt2 + " = 0;\n" +
+							genContaChars(direita.label, cnt2) +
+							"\t" + $$.label + " = (char*) malloc((" + cnt1 + " + " + cnt2 + " + 1) * sizeof(char));\n" +
+							"\tstrcpy(" + $$.label + ", " + esquerda.label + ");\n" +
+							"\tstrcat(" + $$.label + ", " + direita.label + ");\n";
+
+					} else if (esquerda.tipo == "string" && direita.tipo == "char") {
+						// Concatenacao string + char: conta string, malloc+2, strcpy, fecha com char
+						string cnt = gentempcode();
+						add_var(cnt, "int", true, cnt);
+
+						$$.label = gentempcode();
+						$$.tipo = "string";
+						$$.is_literal = false;
+						add_var($$.label, "string", true, $$.label);
+
+						string t_np1sc = gentempcode();
+						string t_nulsc = gentempcode();
+						add_var(t_np1sc, "int",  true, t_np1sc);
+						add_var(t_nulsc, "char", true, t_nulsc);
+						$$.traducao = esquerda.traducao + direita.traducao +
+							"\t" + cnt + " = 0;\n" +
+							genContaChars(esquerda.label, cnt) +
+							"\t" + $$.label + " = (char*) malloc((" + cnt + " + 2) * sizeof(char));\n" +
+							"\tstrcpy(" + $$.label + ", " + esquerda.label + ");\n" +
+							"\t" + t_np1sc + " = " + cnt + " + 1;\n" +
+							"\t" + t_nulsc + " = '\\0';\n" +
+							"\t" + $$.label + "[" + cnt + "] = " + direita.label + ";\n" +
+							"\t" + $$.label + "[" + t_np1sc + "] = " + t_nulsc + ";\n";
+
+					} else if (esquerda.tipo == "char" && direita.tipo == "string") {
+						// Concatenacao char + string: conta string, malloc+2, char em [0], strcat
+						string cnt = gentempcode();
+						add_var(cnt, "int", true, cnt);
+
+						$$.label = gentempcode();
+						$$.tipo = "string";
+						$$.is_literal = false;
+						add_var($$.label, "string", true, $$.label);
+
+						string t_i0cs = gentempcode();
+						string t_i1cs = gentempcode();
+						string t_nlcs = gentempcode();
+						add_var(t_i0cs, "int",  true, t_i0cs);
+						add_var(t_i1cs, "int",  true, t_i1cs);
+						add_var(t_nlcs, "char", true, t_nlcs);
+						$$.traducao = esquerda.traducao + direita.traducao +
+							"\t" + cnt + " = 0;\n" +
+							genContaChars(direita.label, cnt) +
+							"\t" + $$.label + " = (char*) malloc((" + cnt + " + 2) * sizeof(char));\n" +
+							"\t" + t_i0cs + " = 0;\n" +
+							"\t" + t_i1cs + " = 1;\n" +
+							"\t" + t_nlcs + " = '\\0';\n" +
+							"\t" + $$.label + "[" + t_i0cs + "] = " + esquerda.label + ";\n" +
+							"\t" + $$.label + "[" + t_i1cs + "] = " + t_nlcs + ";\n" +
+							"\tstrcat(" + $$.label + ", " + direita.label + ");\n";
+
+					} else if (esquerda.tipo == "char" && direita.tipo == "char") {
+						// Concatenacao char + char: dois chars viram uma string de 2 caracteres
+						$$.label = gentempcode();
+						$$.tipo = "string";
+						$$.is_literal = false;
+						add_var($$.label, "string", true, $$.label);
+
+						string t_i0cc = gentempcode();
+						string t_i1cc = gentempcode();
+						string t_i2cc = gentempcode();
+						string t_nlcc = gentempcode();
+						add_var(t_i0cc, "int",  true, t_i0cc);
+						add_var(t_i1cc, "int",  true, t_i1cc);
+						add_var(t_i2cc, "int",  true, t_i2cc);
+						add_var(t_nlcc, "char", true, t_nlcc);
+						$$.traducao = esquerda.traducao + direita.traducao +
+							"\t" + $$.label + " = (char*) malloc(3 * sizeof(char));\n" +
+							"\t" + t_i0cc + " = 0;\n" +
+							"\t" + t_i1cc + " = 1;\n" +
+							"\t" + t_i2cc + " = 2;\n" +
+							"\t" + t_nlcc + " = '\\0';\n" +
+							"\t" + $$.label + "[" + t_i0cc + "] = " + esquerda.label + ";\n" +
+							"\t" + $$.label + "[" + t_i1cc + "] = " + direita.label + ";\n" +
+							"\t" + $$.label + "[" + t_i2cc + "] = " + t_nlcc + ";\n";
+
+					} else {
+						string tipoFinal = checar_aritmetico(esquerda.tipo, direita.tipo);
+						if(tipoFinal == "") {
+							yyerror("Operacao aritmetica invalida entre '" + esquerda.tipo + "' e '" + direita.tipo + "'");
+							exit(1);
+						}
+						if(tipoFinal == "float") {
+							esquerda = converter_p_float(esquerda);
+							direita = converter_p_float(direita);
+						}
+
+						$$.label = gentempcode();
+						$$.tipo = tipoFinal;
+						add_var($$.label, tipoFinal, true, $$.label);
+						$$.traducao = esquerda.traducao + direita.traducao + "\t" + $$.label +
+							" = " + esquerda.label + " + " + direita.label + ";\n";
+					}
 				}
 				| E '-' E
 				{
@@ -486,6 +594,33 @@
 						$$.traducao = convertido.traducao;
 					}
 				}
+				| TK_STRING
+				{
+					$$.label = $1.label;
+					$$.tipo = "string";
+					$$.is_literal = true;
+					$$.traducao = "";
+				}
+				| TK_VARIAVEL '[' E ']'
+				{
+					if (!verificacao_tabela($1.label)) {
+						yyerror("Variavel nao declarada: " + $1.label);
+						exit(1);
+					}
+					variavel v = buscar_var($1.label);
+					if (v.tipo != "string") {
+						yyerror("Indexacao so e permitida em variaveis do tipo 'string', mas '" + $1.label + "' e do tipo '" + v.tipo + "'");
+						exit(1);
+					}
+					if ($3.tipo != "int") {
+						yyerror("Indice deve ser do tipo 'int', mas recebeu '" + $3.tipo + "'");
+						exit(1);
+					}
+					$$.label = gentempcode();
+					$$.tipo = "char";
+					add_var($$.label, "char", true, $$.label);
+					$$.traducao = $3.traducao + "\t" + $$.label + " = " + v.temp + "[" + $3.label + "];\n";
+				}
 				;
 	D			: TK_TIPO TK_VARIAVEL
 				{
@@ -497,7 +632,20 @@
 
 					string temp = gentempcode();
 					add_var($2.label, $1.label, false, temp);
-					$$.traducao = "";
+
+					if ($1.label == "string") {
+						// Aloca string vazia (1 byte) — reatribuicao futura dara free+realloc
+						string t_idx0a = gentempcode();
+						string t_nul0a = gentempcode();
+						add_var(t_idx0a, "int",  true, t_idx0a);
+						add_var(t_nul0a, "char", true, t_nul0a);
+						$$.traducao = "\t" + temp + " = (char*) malloc(1 * sizeof(char));\n"
+						           + "\t" + t_idx0a + " = 0;\n"
+						           + "\t" + t_nul0a + " = '\\0';\n"
+						           + "\t" + temp + "[" + t_idx0a + "] = " + t_nul0a + ";\n";
+					} else {
+						$$.traducao = "";
+					}
 				}
 				| TK_TIPO TK_VARIAVEL '=' E
 				{
@@ -507,20 +655,43 @@
 						exit(1);
 					}
 
-					atributos expressao = $4;
-
-					string acao = checar_atribuicao($1.label, expressao.tipo);
-					if(acao == "") {
-						yyerror("Atribuicao invalida: nao e possivel atribuir '" + expressao.tipo + "' em variavel do tipo '" + $1.label + "'");
-						exit(1);
+					if ($1.label == "string") {
+						if ($4.tipo != "string") {
+							yyerror("Atribuicao invalida: nao e possivel atribuir '" + $4.tipo + "' em variavel do tipo 'string'");
+							exit(1);
+						}
+						string temp = gentempcode();
+						add_var($2.label, "string", false, temp);
+						if ($4.is_literal) {
+							// Tamanho exato calculado em compile-time (label inclui as aspas)
+							int tamanho = (int)$4.label.length() - 1;
+							$$.traducao = $4.traducao +
+								"\t" + temp + " = (char*) malloc(" + to_string(tamanho) + " * sizeof(char));\n" +
+								"\tstrcpy(" + temp + ", " + $4.label + ");\n";
+						} else {
+							// Tamanho desconhecido: while no codigo gerado conta sem strlen
+							string cnt = gentempcode();
+							add_var(cnt, "int", true, cnt);
+							$$.traducao = $4.traducao +
+								"\t" + cnt + " = 0;\n" +
+								genContaChars($4.label, cnt) +
+								"\t" + temp + " = (char*) malloc((" + cnt + " + 1) * sizeof(char));\n" +
+								"\tstrcpy(" + temp + ", " + $4.label + ");\n";
+						}
+					} else {
+						atributos expressao = $4;
+						string acao = checar_atribuicao($1.label, expressao.tipo);
+						if(acao == "") {
+							yyerror("Atribuicao invalida: nao e possivel atribuir '" + expressao.tipo + "' em variavel do tipo '" + $1.label + "'");
+							exit(1);
+						}
+						if(acao == "promove") {
+							expressao = converter_p_float(expressao);
+						}
+						string temp = gentempcode();
+						add_var($2.label, $1.label, false, temp);
+						$$.traducao = expressao.traducao + "\t" + temp + " = " + expressao.label + ";\n";
 					}
-					if(acao == "promove") {
-						expressao = converter_p_float(expressao);
-					}
-
-					string temp = gentempcode();
-					add_var($2.label, $1.label, false, temp);
-					$$.traducao = expressao.traducao + "\t" + temp + " = " + expressao.label + ";\n";
 				}
 				| TK_VARIAVEL '=' E
 				{
@@ -531,18 +702,43 @@
 
 					variavel a = buscar_var($1.label);
 
-					atributos expressao = $3;
+					if (a.tipo == "string") {
+						if ($3.tipo != "string") {
+							yyerror("Atribuicao invalida: nao e possivel atribuir '" + $3.tipo + "' em variavel '" + $1.label + "' do tipo 'string'");
+							exit(1);
+						}
+						if ($3.is_literal) {
+							// Tamanho exato calculado em compile-time
+							int tamanho = (int)$3.label.length() - 1;
+							$$.traducao = $3.traducao +
+								"\tfree(" + a.temp + ");\n" +
+								"\t" + a.temp + " = (char*) malloc(" + to_string(tamanho) + " * sizeof(char));\n" +
+								"\tstrcpy(" + a.temp + ", " + $3.label + ");\n";
+						} else {
+							// Contagem em runtime sem strlen
+							string cnt = gentempcode();
+							add_var(cnt, "int", true, cnt);
+							$$.traducao = $3.traducao +
+								"\t" + cnt + " = 0;\n" +
+								genContaChars($3.label, cnt) +
+								"\tfree(" + a.temp + ");\n" +
+								"\t" + a.temp + " = (char*) malloc((" + cnt + " + 1) * sizeof(char));\n" +
+								"\tstrcpy(" + a.temp + ", " + $3.label + ");\n";
+						}
+					} else {
+						atributos expressao = $3;
 
-					string acao = checar_atribuicao(a.tipo, expressao.tipo);
-					if(acao == "") {
-						yyerror("Atribuicao invalida: nao e possivel atribuir '" + expressao.tipo + "' em variavel '" + $1.label + "' do tipo '" + a.tipo + "'");
-						exit(1);
-					}
-					if(acao == "promove") {
-						expressao = converter_p_float(expressao);
-					}
+						string acao = checar_atribuicao(a.tipo, expressao.tipo);
+						if(acao == "") {
+							yyerror("Atribuicao invalida: nao e possivel atribuir '" + expressao.tipo + "' em variavel '" + $1.label + "' do tipo '" + a.tipo + "'");
+							exit(1);
+						}
+						if(acao == "promove") {
+							expressao = converter_p_float(expressao);
+						}
 
-					$$.traducao = expressao.traducao + "\t" + a.temp + " = " + expressao.label + ";\n";
+						$$.traducao = expressao.traducao + "\t" + a.temp + " = " + expressao.label + ";\n";
+					}
 				} 
 				;
 	%%
@@ -555,6 +751,29 @@
 	{
 		var_temp_qnt++;
 		return "t" + to_string(var_temp_qnt);
+	}
+
+	string genLabel()
+	{
+		label_qnt++;
+		return "L" + to_string(label_qnt);
+	}
+
+	string genContaChars(string str_label, string cnt_label)
+	{
+		string lb = genLabel();
+		string le = genLabel();
+		string t_char = gentempcode();
+		string t_cond = gentempcode();
+		add_var(t_char, "char", true, t_char);
+		add_var(t_cond, "int",  true, t_cond);
+		return "\t" + lb + ":\n"
+			+ "\t" + t_char + " = " + str_label + "[" + cnt_label + "];\n"
+			+ "\t" + t_cond + " = (" + t_char + " == '\\0');\n"
+			+ "\tif (" + t_cond + ") goto " + le + ";\n"
+			+ "\t" + cnt_label + " = " + cnt_label + " + 1;\n"
+			+ "\tgoto " + lb + ";\n"
+			+ "\t" + le + ": ;\n";
 	}
 
 	string chave_temp()
@@ -592,7 +811,8 @@
 
 	void add_var(string nome, string tipo, bool temp, string vars_temp) {
 
-		string tipo_c = (tipo == "bool") ? "int" : tipo;
+		if (tipo == "string") usa_string = true;
+		string tipo_c = (tipo == "bool") ? "int" : (tipo == "string") ? "char *" : tipo;
 
 		if (!temp) {
 			// Verifica redeclaracao apenas no escopo atual (topo da pilha)

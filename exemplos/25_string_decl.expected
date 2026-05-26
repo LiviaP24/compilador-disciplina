@@ -1,0 +1,16 @@
+/*Compilador FOCA*/
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+int main(void) {
+	char * t1;
+	int t2;
+	char t3;
+
+	t1 = (char*) malloc(1 * sizeof(char));
+	t2 = 0;
+	t3 = '\0';
+	t1[t2] = t3;
+	printf("%s\n", t1);
+	return 0;
+}

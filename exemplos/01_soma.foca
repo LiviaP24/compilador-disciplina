@@ -1,7 +1,11 @@
-true && true;
+string s = "abc";
+char c = s[0];
 
-a = (a > 3.0) 
-ta recebendo true sendo int
-relacionais com tipos diferentes nao pode
+string r1 = s + 'z';
+printf("%s\n", r1);
 
-problema de conversao float --> int
+string r2 = 'A' + s;
+printf("%s\n", r2);
+
+string r3 = c + 'z';
+printf("%s\n", r3);

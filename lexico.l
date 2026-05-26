@@ -7,7 +7,7 @@
 ESPACO [ \t]
 DIGITO [0-9]
 LETTER [_a-zA-Z]
-TIPO (int|float|char|bool)
+TIPO (int|float|char|bool|string)
 
 DELIM {ESPACO}+
 NUM {DIGITO}+
@@ -41,6 +41,7 @@ STRING \"([^\\\"]|\\.)*\"
 [=]             { return *yytext; }
 [;,]            { return *yytext; }
 [{}]            { return *yytext; }
+[\[\]]          { return *yytext; }
 
 "printf"    { return TK_PRINTF; }
 

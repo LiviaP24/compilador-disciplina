@@ -1,0 +1,2 @@
+int x = 1;
+char c = x[0];

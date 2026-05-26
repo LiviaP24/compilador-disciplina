@@ -1,0 +1,12 @@
+/*Compilador FOCA*/
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+int main(void) {
+	char * t1;
+
+	t1 = (char*) malloc(6 * sizeof(char));
+	strcpy(t1, "hello");
+	printf("%s\n", t1);
+	return 0;
+}

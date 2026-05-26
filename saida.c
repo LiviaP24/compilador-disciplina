@@ -1,20 +1,123 @@
 /*Compilador FOCA*/
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 int main(void) {
-	int t1;
+	char * t1;
 	int t2;
-	int t3;
-	int t4;
-	int t5;
+	char t3;
+	char t4;
+	char t5;
 	int t6;
+	char * t7;
+	int t8;
+	char t9;
+	char t10;
+	int t11;
+	char * t12;
+	int t13;
+	char t14;
+	int t15;
+	char t16;
+	int t17;
+	char * t18;
+	int t19;
+	int t20;
+	char t21;
+	char t22;
+	int t23;
+	char * t24;
+	int t25;
+	char t26;
+	int t27;
+	char t28;
+	char * t29;
+	int t30;
+	int t31;
+	int t32;
+	char t33;
+	char * t34;
+	int t35;
+	char t36;
+	int t37;
 
-	t1 = 10;
-	t2 = t1;
-	t3 = 5;
+	t1 = (char*) malloc(4 * sizeof(char));
+	strcpy(t1, "abc");
+	t2 = 0;
+	t3 = t1[t2];
 	t4 = t3;
-	t5 = 2;
-	t6 = t5;
-	printf("%d\n", t6);
-	printf("%d\n", t4);
+	t5 = 'z';
+	t6 = 0;
+	L1:
+	t10 = t1[t6];
+	t11 = (t10 == '\0');
+	if (t11) goto L2;
+	t6 = t6 + 1;
+	goto L1;
+	L2: ;
+	t7 = (char*) malloc((t6 + 2) * sizeof(char));
+	strcpy(t7, t1);
+	t8 = t6 + 1;
+	t9 = '\0';
+	t7[t6] = t5;
+	t7[t8] = t9;
+	t13 = 0;
+	L3:
+	t14 = t7[t13];
+	t15 = (t14 == '\0');
+	if (t15) goto L4;
+	t13 = t13 + 1;
+	goto L3;
+	L4: ;
+	t12 = (char*) malloc((t13 + 1) * sizeof(char));
+	strcpy(t12, t7);
+	printf("%s\n", t12);
+	t16 = 'A';
+	t17 = 0;
+	L5:
+	t22 = t1[t17];
+	t23 = (t22 == '\0');
+	if (t23) goto L6;
+	t17 = t17 + 1;
+	goto L5;
+	L6: ;
+	t18 = (char*) malloc((t17 + 2) * sizeof(char));
+	t19 = 0;
+	t20 = 1;
+	t21 = '\0';
+	t18[t19] = t16;
+	t18[t20] = t21;
+	strcat(t18, t1);
+	t25 = 0;
+	L7:
+	t26 = t18[t25];
+	t27 = (t26 == '\0');
+	if (t27) goto L8;
+	t25 = t25 + 1;
+	goto L7;
+	L8: ;
+	t24 = (char*) malloc((t25 + 1) * sizeof(char));
+	strcpy(t24, t18);
+	printf("%s\n", t24);
+	t28 = 'z';
+	t29 = (char*) malloc(3 * sizeof(char));
+	t30 = 0;
+	t31 = 1;
+	t32 = 2;
+	t33 = '\0';
+	t29[t30] = t4;
+	t29[t31] = t28;
+	t29[t32] = t33;
+	t35 = 0;
+	L9:
+	t36 = t29[t35];
+	t37 = (t36 == '\0');
+	if (t37) goto L10;
+	t35 = t35 + 1;
+	goto L9;
+	L10: ;
+	t34 = (char*) malloc((t35 + 1) * sizeof(char));
+	strcpy(t34, t29);
+	printf("%s\n", t34);
 	return 0;
 }

@@ -1,0 +1,5 @@
+string a = "compilador";
+string b;
+b = a;
+printf("%s\n", a);
+printf("%s\n", b);

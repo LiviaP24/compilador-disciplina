@@ -1,0 +1,13 @@
+string s = "abc";
+char c = s[0];
+
+string r1 = s + 'z';
+printf("%s\n", r1);
+
+string r2 = 'A' + s;
+printf("%s\n", r2);
+
+string r3 = c + 'z';
+printf("%s\n", r3);
+
+
