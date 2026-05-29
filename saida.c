@@ -1,59 +1,35 @@
 /*Compilador FOCA*/
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 int main(void) {
 	int t1;
-	float t2;
-	char * t3;
+	int t2;
+	int t3;
 	int t4;
 	int t5;
-	char t6;
+	int t6;
 	int t7;
 	int t8;
-	char t9;
+	int t9;
 	int t10;
-	char * t11;
-	int t12;
-	int t13;
-	int t14;
-	int t15;
-	int t16;
-	int t17;
-	char t18;
-	int t19;
 
-	t4 = 1;
-	t7 = sizeof(char);
-	t8 = t4 * t7;
-	t3 = (char*) malloc(t8);
-	t5 = 0;
-	t6 = '\0';
-	t3[t5] = t6;
-	free(t3);
-	t10 = 256;
-	t14 = sizeof(char);
-	t15 = t10 * t14;
-	t3 = (char*) malloc(t15);
-	scanf("%s ", t3);
-	t12 = 0;
-	L1:
-	t18 = t3[t12];
-	t19 = (t18 == '\0');
-	if (t19) goto L2;
-	t12 = t12 + 1;
+	t2 = 1;
+	t1 = t2;
+	L1: ;
+	t3 = 10;
+	t4 = t1 <= t3;
+	t10 = !t4;
+	if (t10) goto L2;
+	t7 = 5;
+	t8 = t1 == t7;
+	t9 = !t8;
+	if (t9) goto L3;
+	goto L2;
+	L3: ;
+	printf("%d\n", t1);
+	t5 = 1;
+	t6 = t1 + t5;
+	t1 = t6;
 	goto L1;
 	L2: ;
-	t11 = t3;
-	t13 = t12 + 1;
-	t16 = sizeof(char);
-	t17 = t13 * t16;
-	t3 = (char*) malloc(t17);
-	strcpy(t3, t11);
-	free(t11);
-	scanf("%c ", &t9);
-	scanf("%d ", &t1);
-	scanf("%f", &t2);
-	printf("%s do sexo %c tem %d anos e %.2f de altura\n", t3, t9, t1, t2);
 	return 0;
 }

@@ -39,12 +39,22 @@ STRING \"([^\\\"]|\\.)*\"
 [*/]		{ return *yytext; }
 [()]            { return *yytext; }
 [=]             { return *yytext; }
-[;,]            { return *yytext; }
+[;,:]           { return *yytext; }
 [{}]            { return *yytext; }
 [\[\]]          { return *yytext; }
 
 "scanf"     { return TK_SCANF; }
 "printf"    { return TK_PRINTF; }
+
+"if"        { return TK_IF; }
+"else"      { return TK_ELSE; }
+"while"     { return TK_WHILE; }
+"do"        { return TK_DO; }
+"for"       { return TK_FOR; }
+"switch"    { return TK_SWITCH; }
+"case"      { return TK_CASE; }
+"default"   { return TK_DEFAULT; }
+"break"     { return TK_BREAK; }
 
 {BOOL}     { yylval.label = yytext; return TK_BOOL; }
 {CHAR}      { yylval.label = yytext; return TK_CHAR; }

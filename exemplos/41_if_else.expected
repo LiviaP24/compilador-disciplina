@@ -1,0 +1,22 @@
+/*Compilador FOCA*/
+#include <stdio.h>
+int main(void) {
+        int t1;
+        int t2;
+        int t3;
+        int t4;
+        int t5;
+
+        t2 = 3;
+        t1 = t2;
+        t3 = 0;
+        t4 = t1 > t3;
+        t5 = !t4;
+        if (t5) goto L1;
+        printf("positivo\n");
+        goto L2;
+        L1: ;
+        printf("nao positivo\n");
+        L2: ;
+        return 0;
+}

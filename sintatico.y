@@ -16,6 +16,10 @@
 	bool usa_string = false;
 	int label_qnt = 0;
 
+	vector<string> pilha_break;   // labels de break para loops e switch
+	vector<string> pilha_inicio;  // labels de volta para loops (goto inicio)
+	string g_switch_expr_temp = "";  // temporario da expressao do switch atual
+
 	struct atributos
 	{
 		string label;
@@ -93,6 +97,12 @@
 	%token TK_GT TK_LT TK_GE TK_LE TK_EQ TK_NE
 	%token TK_CAST_INT TK_CAST_FLOAT
 	%token TK_PRINTF TK_SCANF TK_STRING
+	%token TK_IF TK_ELSE TK_WHILE TK_DO TK_FOR
+	%token TK_SWITCH TK_CASE TK_DEFAULT TK_BREAK
+
+	// Resolve ambiguidade do dangling-else: else tem maior precedencia
+	%nonassoc TK_THEN
+	%nonassoc TK_ELSE
 
 	%start S
 
@@ -175,6 +185,112 @@
 					            + "\tscanf(" + $3.label + ", " + $5.label + ");\n"
 					            + $5.tipo;
 				}
+				| TK_BREAK ';'
+				{
+					if (pilha_break.empty()) {
+						yyerror("'break' fora de loop ou switch");
+						exit(1);
+					}
+					$$.traducao = "\tgoto " + pilha_break.back() + ";\n";
+				}
+				| TK_IF '(' E ')' cmd %prec TK_THEN
+				{
+					string L_fim = genLabel();
+					string t_neg = gentempcode(); add_var(t_neg, "int", true, t_neg);
+					$$.traducao = $3.traducao
+					           + "\t" + t_neg + " = !" + $3.label + ";\n"
+					           + "\tif (" + t_neg + ") goto " + L_fim + ";\n"
+					           + $5.traducao
+					           + "\t" + L_fim + ": ;\n";
+				}
+				| TK_IF '(' E ')' cmd TK_ELSE cmd
+				{
+					string L_else = genLabel();
+					string L_fim  = genLabel();
+					string t_neg  = gentempcode(); add_var(t_neg, "int", true, t_neg);
+					$$.traducao = $3.traducao
+					           + "\t" + t_neg + " = !" + $3.label + ";\n"
+					           + "\tif (" + t_neg + ") goto " + L_else + ";\n"
+					           + $5.traducao
+					           + "\tgoto " + L_fim + ";\n"
+					           + "\t" + L_else + ": ;\n"
+					           + $7.traducao
+					           + "\t" + L_fim + ": ;\n";
+				}
+				| TK_WHILE '(' E ')'
+				  {
+					  string Li = genLabel(); string Lf = genLabel();
+					  pilha_inicio.push_back(Li);
+					  pilha_break.push_back(Lf);
+				  }
+				  cmd
+				{
+					string Li = pilha_inicio.back(); pilha_inicio.pop_back();
+					string Lf = pilha_break.back();  pilha_break.pop_back();
+					string t_neg = gentempcode(); add_var(t_neg, "int", true, t_neg);
+					$$.traducao = "\t" + Li + ": ;\n"
+					           + $3.traducao
+					           + "\t" + t_neg + " = !" + $3.label + ";\n"
+					           + "\tif (" + t_neg + ") goto " + Lf + ";\n"
+					           + $6.traducao
+					           + "\tgoto " + Li + ";\n"
+					           + "\t" + Lf + ": ;\n";
+				}
+				| TK_DO
+				  {
+					  string Li = genLabel(); string Lf = genLabel();
+					  pilha_inicio.push_back(Li);
+					  pilha_break.push_back(Lf);
+				  }
+				  cmd TK_WHILE '(' E ')' ';'
+				{
+					string Li = pilha_inicio.back(); pilha_inicio.pop_back();
+					string Lf = pilha_break.back();  pilha_break.pop_back();
+					// do-while nao precisa negar: se condicao verdadeira, volta
+					$$.traducao = "\t" + Li + ": ;\n"
+					           + $3.traducao
+					           + $6.traducao
+					           + "\tif (" + $6.label + ") goto " + Li + ";\n"
+					           + "\t" + Lf + ": ;\n";
+				}
+				| TK_FOR '(' { entra_escopo(); } for_init E ';' for_incr ')'
+				  {
+					  string Li = genLabel(); string Lf = genLabel();
+					  pilha_inicio.push_back(Li);
+					  pilha_break.push_back(Lf);
+				  }
+				  cmd
+				{
+					sai_escopo();
+					string Li = pilha_inicio.back(); pilha_inicio.pop_back();
+					string Lf = pilha_break.back();  pilha_break.pop_back();
+					string t_neg = gentempcode(); add_var(t_neg, "int", true, t_neg);
+					// $4=for_init $5=E $6=';' $7=for_incr $8=')' $9=embedded $10=cmd
+					$$.traducao = $4.traducao
+					           + "\t" + Li + ": ;\n"
+					           + $5.traducao
+					           + "\t" + t_neg + " = !" + $5.label + ";\n"
+					           + "\tif (" + t_neg + ") goto " + Lf + ";\n"
+					           + $10.traducao
+					           + $7.traducao
+					           + "\tgoto " + Li + ";\n"
+					           + "\t" + Lf + ": ;\n";
+				}
+				| TK_SWITCH '(' E ')'
+				  {
+					  g_switch_expr_temp = $3.label;
+					  string Lf = genLabel();
+					  pilha_break.push_back(Lf);
+				  }
+				  '{' switch_cases switch_default '}'
+				{
+					string Lf = pilha_break.back(); pilha_break.pop_back();
+					// $3=E  $5=embedded  $7=switch_cases  $8=switch_default
+					$$.traducao = $3.traducao
+					           + $7.traducao
+					           + $8.traducao
+					           + "\t" + Lf + ": ;\n";
+				}
 				;
 
 	BLOCO		: '{' { entra_escopo(); } cmds '}'
@@ -185,6 +301,79 @@
 				| '{' '}'
 				{
 					$$.traducao = "";
+				}
+				;
+
+
+	for_init	: D ';'
+				{
+					$$.traducao = $1.traducao;
+				}
+				| E ';'
+				{
+					$$.traducao = $1.traducao;
+				}
+				| ';'
+				{
+					$$.traducao = "";
+				}
+				;
+
+	for_incr	: D
+				{
+					$$.traducao = $1.traducao;
+				}
+				| E
+				{
+					$$.traducao = $1.traducao;
+				}
+				| /* vazio */
+				{
+					$$.traducao = "";
+				}
+				;
+
+	switch_cases	: /* vazio */
+				{
+					$$.traducao = "";
+				}
+				| switch_cases switch_case
+				{
+					$$.traducao = $1.traducao + $2.traducao;
+				}
+				;
+
+	switch_case	: TK_CASE E ':' switch_stmts
+				{
+					string L_next = genLabel();
+					string t_eq  = gentempcode(); add_var(t_eq,  "int", true, t_eq);
+					string t_neg = gentempcode(); add_var(t_neg, "int", true, t_neg);
+					$$.traducao = $2.traducao
+					           + "\t" + t_eq  + " = (" + g_switch_expr_temp + " == " + $2.label + ");\n"
+					           + "\t" + t_neg + " = !" + t_eq + ";\n"
+					           + "\tif (" + t_neg + ") goto " + L_next + ";\n"
+					           + $4.traducao
+					           + "\t" + L_next + ": ;\n";
+				}
+				;
+
+	switch_stmts	: cmds TK_BREAK ';'
+				{
+					$$.traducao = $1.traducao + "\tgoto " + pilha_break.back() + ";\n";
+				}
+				| TK_BREAK ';'
+				{
+					$$.traducao = "\tgoto " + pilha_break.back() + ";\n";
+				}
+				;
+
+	switch_default	: /* vazio */
+				{
+					$$.traducao = "";
+				}
+				| TK_DEFAULT ':' switch_stmts
+				{
+					$$.traducao = $3.traducao;
 				}
 				;
 
@@ -200,10 +389,6 @@
 				}
 				;
 
-	// scanf_args acumula:
-	//   label    = argumentos para o scanf (ex: "&t1, t2, &t3")
-	//   traducao = pre-codigo: malloc 256 para variaveis string
-	//   tipo     = pos-codigo: conta + redimensiona strings apos o scanf
 	scanf_args	: TK_VARIAVEL
 				{
 					if (!verificacao_tabela($1.label)) {
@@ -834,10 +1019,6 @@
 		return "L" + to_string(label_qnt);
 	}
 
-	// Gera codigo de 3 enderecos para: result = (char*) malloc(count * sizeof(char))
-	// count_code: codigo que coloca o tamanho em count_temp
-	// count_temp: temporario que contem o numero de chars
-	// result_label: onde armazenar o ponteiro resultante
 	string genMallocStr(string count_code, string count_temp, string result_label)
 	{
 		string t_szof   = gentempcode(); add_var(t_szof,   "int", true, t_szof);
