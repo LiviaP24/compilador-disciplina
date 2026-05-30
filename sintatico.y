@@ -18,6 +18,7 @@
 
 	vector<string> pilha_break;   // labels de break para loops e switch
 	vector<string> pilha_inicio;  // labels de volta para loops (goto inicio)
+	vector<string> pilha_continue; // labels de continue: alvo varia por tipo de loop
 	string g_switch_expr_temp = "";  // temporario da expressao do switch atual
 
 	struct atributos
@@ -98,7 +99,7 @@
 	%token TK_CAST_INT TK_CAST_FLOAT
 	%token TK_PRINTF TK_SCANF TK_STRING
 	%token TK_IF TK_ELSE TK_WHILE TK_DO TK_FOR
-	%token TK_SWITCH TK_CASE TK_DEFAULT TK_BREAK
+	%token TK_SWITCH TK_CASE TK_DEFAULT TK_BREAK TK_CONTINUE
 
 	// Resolve ambiguidade do dangling-else: else tem maior precedencia
 	%nonassoc TK_THEN
@@ -193,6 +194,14 @@
 					}
 					$$.traducao = "\tgoto " + pilha_break.back() + ";\n";
 				}
+				| TK_CONTINUE ';'
+				{
+					if (pilha_continue.empty()) {
+						yyerror("'continue' fora de loop");
+						exit(1);
+					}
+					$$.traducao = "\tgoto " + pilha_continue.back() + ";\n";
+				}
 				| TK_IF '(' E ')' cmd %prec TK_THEN
 				{
 					string L_fim = genLabel();
@@ -221,12 +230,14 @@
 				  {
 					  string Li = genLabel(); string Lf = genLabel();
 					  pilha_inicio.push_back(Li);
+					  pilha_continue.push_back(Li); // continue = L_inicio para while
 					  pilha_break.push_back(Lf);
 				  }
 				  cmd
 				{
-					string Li = pilha_inicio.back(); pilha_inicio.pop_back();
-					string Lf = pilha_break.back();  pilha_break.pop_back();
+					string Li = pilha_inicio.back();   pilha_inicio.pop_back();
+					           pilha_continue.pop_back();
+					string Lf = pilha_break.back();    pilha_break.pop_back();
 					string t_neg = gentempcode(); add_var(t_neg, "int", true, t_neg);
 					$$.traducao = "\t" + Li + ": ;\n"
 					           + $3.traducao
@@ -238,32 +249,41 @@
 				}
 				| TK_DO
 				  {
-					  string Li = genLabel(); string Lf = genLabel();
+					  string Li   = genLabel(); // inicio do corpo
+					  string Lc   = genLabel(); // inicio da condicao (alvo do continue)
+					  string Lf   = genLabel(); // fim do loop (alvo do break)
 					  pilha_inicio.push_back(Li);
+					  pilha_continue.push_back(Lc); // continue vai para a condicao, nao repete o corpo
 					  pilha_break.push_back(Lf);
 				  }
 				  cmd TK_WHILE '(' E ')' ';'
 				{
-					string Li = pilha_inicio.back(); pilha_inicio.pop_back();
-					string Lf = pilha_break.back();  pilha_break.pop_back();
-					// do-while nao precisa negar: se condicao verdadeira, volta
+					string Li = pilha_inicio.back();    pilha_inicio.pop_back();
+					string Lc = pilha_continue.back(); pilha_continue.pop_back();
+					string Lf = pilha_break.back();     pilha_break.pop_back();
+					// do-while: corpo executa, depois verifica condicao
 					$$.traducao = "\t" + Li + ": ;\n"
 					           + $3.traducao
+					           + "\t" + Lc + ": ;\n"  // continue chega aqui
 					           + $6.traducao
 					           + "\tif (" + $6.label + ") goto " + Li + ";\n"
 					           + "\t" + Lf + ": ;\n";
 				}
 				| TK_FOR '(' { entra_escopo(); } for_init E ';' for_incr ')'
 				  {
-					  string Li = genLabel(); string Lf = genLabel();
+					  string Li    = genLabel(); // inicio do loop (antes da condicao)
+					  string Lincr = genLabel(); // inicio do incremento (alvo do continue)
+					  string Lf    = genLabel(); // fim do loop (alvo do break)
 					  pilha_inicio.push_back(Li);
+					  pilha_continue.push_back(Lincr); // continue pula para o incremento
 					  pilha_break.push_back(Lf);
 				  }
 				  cmd
 				{
 					sai_escopo();
-					string Li = pilha_inicio.back(); pilha_inicio.pop_back();
-					string Lf = pilha_break.back();  pilha_break.pop_back();
+					string Li    = pilha_inicio.back();   pilha_inicio.pop_back();
+					string Lincr = pilha_continue.back(); pilha_continue.pop_back();
+					string Lf    = pilha_break.back();    pilha_break.pop_back();
 					string t_neg = gentempcode(); add_var(t_neg, "int", true, t_neg);
 					// $4=for_init $5=E $6=';' $7=for_incr $8=')' $9=embedded $10=cmd
 					$$.traducao = $4.traducao
@@ -272,6 +292,7 @@
 					           + "\t" + t_neg + " = !" + $5.label + ";\n"
 					           + "\tif (" + t_neg + ") goto " + Lf + ";\n"
 					           + $10.traducao
+					           + "\t" + Lincr + ": ;\n"  // continue chega aqui
 					           + $7.traducao
 					           + "\tgoto " + Li + ";\n"
 					           + "\t" + Lf + ": ;\n";
