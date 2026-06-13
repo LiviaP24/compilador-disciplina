@@ -1,7 +1,11 @@
-true && true;
+int i;
+for (i = 1; i <= 10; i = i + 1) {
+    if (i == 5) {
+        break;
+    }
+    printf("%d\n", i);
+}
 
-a = (a > 3.0) 
-ta recebendo true sendo int
-relacionais com tipos diferentes nao pode
 
-problema de conversao float --> int
+
+

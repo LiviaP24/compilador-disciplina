@@ -27,6 +27,7 @@
 		string traducao;
 		string tipo;
 		bool is_literal = false;
+		bool owns_memory = false; // true quando label e uma alocacao nova (resultado de concat)
 	};
 
 	struct variavel
@@ -475,81 +476,157 @@
 
 					if (esquerda.tipo == "string" && direita.tipo == "string") {
 						// Concatenacao string + string
-						string cnt1 = gentempcode();
-						string cnt2 = gentempcode();
-						add_var(cnt1, "int", true, cnt1);
-						add_var(cnt2, "int", true, cnt2);
-
 						$$.label = gentempcode();
 						$$.tipo = "string";
 						$$.is_literal = false;
+						$$.owns_memory = true;
 						add_var($$.label, "string", true, $$.label);
 
-						string t_sum_ss = gentempcode(); add_var(t_sum_ss, "int", true, t_sum_ss);
-						string t_p1_ss  = gentempcode(); add_var(t_p1_ss,  "int", true, t_p1_ss);
-						$$.traducao = esquerda.traducao + direita.traducao +
-							"\t" + cnt1 + " = 0;\n" +
-							genContaChars(esquerda.label, cnt1) +
-							"\t" + cnt2 + " = 0;\n" +
-							genContaChars(direita.label, cnt2) +
-							genMallocStr("\t" + t_sum_ss + " = " + cnt1 + " + " + cnt2 + ";\n"
-							           + "\t" + t_p1_ss  + " = " + t_sum_ss + " + 1;\n", t_p1_ss, $$.label) +
-							"\tstrcpy(" + $$.label + ", " + esquerda.label + ");\n" +
-							"\tstrcat(" + $$.label + ", " + direita.label + ");\n";
+						if (esquerda.is_literal && direita.is_literal) {
+							// Ambos literais: tamanho totalmente em compile-time
+							int len1 = (int)esquerda.label.length() - 2;
+							int len2 = (int)direita.label.length() - 2;
+							int tamanho = len1 + len2 + 1; // +1 para o null terminator
+							string t_sz_ss = gentempcode(); add_var(t_sz_ss, "int", true, t_sz_ss);
+							$$.traducao = esquerda.traducao + direita.traducao +
+								genMallocStr("\t" + t_sz_ss + " = " + to_string(tamanho) + ";\n", t_sz_ss, $$.label) +
+								"\tstrcpy(" + $$.label + ", " + esquerda.label + ");\n" +
+								"\tstrcat(" + $$.label + ", " + direita.label + ");\n";
+						} else if (esquerda.is_literal) {
+							// Esquerda literal: tamanho dela conhecido, conta so a direita em runtime
+							int len1 = (int)esquerda.label.length() - 2;
+							string cnt2   = gentempcode(); add_var(cnt2,   "int", true, cnt2);
+							string t_l1   = gentempcode(); add_var(t_l1,   "int", true, t_l1);
+							string t_sum  = gentempcode(); add_var(t_sum,  "int", true, t_sum);
+							string t_p1   = gentempcode(); add_var(t_p1,   "int", true, t_p1);
+							$$.traducao = esquerda.traducao + direita.traducao +
+								"\t" + cnt2  + " = 0;\n" +
+								genContaChars(direita.label, cnt2) +
+								"\t" + t_l1  + " = " + to_string(len1) + ";\n" +
+								genMallocStr("\t" + t_sum + " = " + t_l1 + " + " + cnt2 + ";\n"
+								           + "\t" + t_p1  + " = " + t_sum + " + 1;\n", t_p1, $$.label) +
+								"\tstrcpy(" + $$.label + ", " + esquerda.label + ");\n" +
+								"\tstrcat(" + $$.label + ", " + direita.label + ");\n";
+						} else if (direita.is_literal) {
+							// Direita literal: tamanho dela conhecido, conta so a esquerda em runtime
+							int len2 = (int)direita.label.length() - 2;
+							string cnt1   = gentempcode(); add_var(cnt1,   "int", true, cnt1);
+							string t_l2   = gentempcode(); add_var(t_l2,   "int", true, t_l2);
+							string t_sum  = gentempcode(); add_var(t_sum,  "int", true, t_sum);
+							string t_p1   = gentempcode(); add_var(t_p1,   "int", true, t_p1);
+							$$.traducao = esquerda.traducao + direita.traducao +
+								"\t" + cnt1  + " = 0;\n" +
+								genContaChars(esquerda.label, cnt1) +
+								"\t" + t_l2  + " = " + to_string(len2) + ";\n" +
+								genMallocStr("\t" + t_sum + " = " + cnt1 + " + " + t_l2 + ";\n"
+								           + "\t" + t_p1  + " = " + t_sum + " + 1;\n", t_p1, $$.label) +
+								"\tstrcpy(" + $$.label + ", " + esquerda.label + ");\n" +
+								"\tstrcat(" + $$.label + ", " + direita.label + ");\n";
+						} else {
+							// Nenhum literal: conta os dois em runtime
+							string cnt1 = gentempcode(); add_var(cnt1, "int", true, cnt1);
+							string cnt2 = gentempcode(); add_var(cnt2, "int", true, cnt2);
+							string t_sum_ss = gentempcode(); add_var(t_sum_ss, "int", true, t_sum_ss);
+							string t_p1_ss  = gentempcode(); add_var(t_p1_ss,  "int", true, t_p1_ss);
+							$$.traducao = esquerda.traducao + direita.traducao +
+								"\t" + cnt1 + " = 0;\n" +
+								genContaChars(esquerda.label, cnt1) +
+								"\t" + cnt2 + " = 0;\n" +
+								genContaChars(direita.label, cnt2) +
+								genMallocStr("\t" + t_sum_ss + " = " + cnt1 + " + " + cnt2 + ";\n"
+								           + "\t" + t_p1_ss  + " = " + t_sum_ss + " + 1;\n", t_p1_ss, $$.label) +
+								"\tstrcpy(" + $$.label + ", " + esquerda.label + ");\n" +
+								"\tstrcat(" + $$.label + ", " + direita.label + ");\n";
+						}
 
 					} else if (esquerda.tipo == "string" && direita.tipo == "char") {
-						// Concatenacao string + char: conta string, malloc+2, strcpy, fecha com char
-						string cnt = gentempcode();
-						add_var(cnt, "int", true, cnt);
-
+						// Concatenacao string + char: strcpy, append char e null terminator
 						$$.label = gentempcode();
 						$$.tipo = "string";
 						$$.is_literal = false;
+						$$.owns_memory = true;
 						add_var($$.label, "string", true, $$.label);
 
-						string t_p2sc  = gentempcode(); add_var(t_p2sc,  "int",  true, t_p2sc);
-						string t_np1sc = gentempcode(); add_var(t_np1sc, "int",  true, t_np1sc);
 						string t_nulsc = gentempcode(); add_var(t_nulsc, "char", true, t_nulsc);
-						$$.traducao = esquerda.traducao + direita.traducao +
-							"\t" + cnt + " = 0;\n" +
-							genContaChars(esquerda.label, cnt) +
-							genMallocStr("\t" + t_p2sc + " = " + cnt + " + 2;\n", t_p2sc, $$.label) +
-							"\tstrcpy(" + $$.label + ", " + esquerda.label + ");\n" +
-							"\t" + t_np1sc + " = " + cnt + " + 1;\n" +
-							"\t" + t_nulsc + " = '\\0';\n" +
-							"\t" + $$.label + "[" + cnt + "] = " + direita.label + ";\n" +
-							"\t" + $$.label + "[" + t_np1sc + "] = " + t_nulsc + ";\n";
+
+						if (esquerda.is_literal) {
+							// Tamanho calculado em compile-time
+							int len1 = (int)esquerda.label.length() - 2;
+							int tamanho = len1 + 2; // string + char + null
+							string t_sz_sc  = gentempcode(); add_var(t_sz_sc,  "int", true, t_sz_sc);
+							string t_idx_sc = gentempcode(); add_var(t_idx_sc, "int", true, t_idx_sc);
+							string t_np1sc  = gentempcode(); add_var(t_np1sc,  "int", true, t_np1sc);
+							$$.traducao = esquerda.traducao + direita.traducao +
+								genMallocStr("\t" + t_sz_sc + " = " + to_string(tamanho) + ";\n", t_sz_sc, $$.label) +
+								"\tstrcpy(" + $$.label + ", " + esquerda.label + ");\n" +
+								"\t" + t_idx_sc + " = " + to_string(len1) + ";\n" +
+								"\t" + t_np1sc  + " = " + to_string(len1 + 1) + ";\n" +
+								"\t" + t_nulsc  + " = '\\0';\n" +
+								"\t" + $$.label + "[" + t_idx_sc + "] = " + direita.label + ";\n" +
+								"\t" + $$.label + "[" + t_np1sc  + "] = " + t_nulsc + ";\n";
+						} else {
+							// Tamanho desconhecido em compile-time: conta chars em runtime
+							string cnt    = gentempcode(); add_var(cnt,    "int", true, cnt);
+							string t_p2sc = gentempcode(); add_var(t_p2sc, "int", true, t_p2sc);
+							string t_np1sc = gentempcode(); add_var(t_np1sc, "int", true, t_np1sc);
+							$$.traducao = esquerda.traducao + direita.traducao +
+								"\t" + cnt + " = 0;\n" +
+								genContaChars(esquerda.label, cnt) +
+								genMallocStr("\t" + t_p2sc + " = " + cnt + " + 2;\n", t_p2sc, $$.label) +
+								"\tstrcpy(" + $$.label + ", " + esquerda.label + ");\n" +
+								"\t" + t_np1sc + " = " + cnt + " + 1;\n" +
+								"\t" + t_nulsc + " = '\\0';\n" +
+								"\t" + $$.label + "[" + cnt + "] = " + direita.label + ";\n" +
+								"\t" + $$.label + "[" + t_np1sc + "] = " + t_nulsc + ";\n";
+						}
 
 					} else if (esquerda.tipo == "char" && direita.tipo == "string") {
-						// Concatenacao char + string: conta string, malloc+2, char em [0], strcat
-						string cnt = gentempcode();
-						add_var(cnt, "int", true, cnt);
-
+						// Concatenacao char + string: char em [0], null em [1], strcat
 						$$.label = gentempcode();
 						$$.tipo = "string";
 						$$.is_literal = false;
+						$$.owns_memory = true;
 						add_var($$.label, "string", true, $$.label);
 
-						string t_p2cs  = gentempcode(); add_var(t_p2cs,  "int",  true, t_p2cs);
-						string t_i0cs  = gentempcode(); add_var(t_i0cs,  "int",  true, t_i0cs);
-						string t_i1cs  = gentempcode(); add_var(t_i1cs,  "int",  true, t_i1cs);
-						string t_nlcs  = gentempcode(); add_var(t_nlcs,  "char", true, t_nlcs);
-						$$.traducao = esquerda.traducao + direita.traducao +
-							"\t" + cnt + " = 0;\n" +
-							genContaChars(direita.label, cnt) +
-							genMallocStr("\t" + t_p2cs + " = " + cnt + " + 2;\n", t_p2cs, $$.label) +
-							"\t" + t_i0cs + " = 0;\n" +
-							"\t" + t_i1cs + " = 1;\n" +
-							"\t" + t_nlcs + " = '\\0';\n" +
-							"\t" + $$.label + "[" + t_i0cs + "] = " + esquerda.label + ";\n" +
-							"\t" + $$.label + "[" + t_i1cs + "] = " + t_nlcs + ";\n" +
-							"\tstrcat(" + $$.label + ", " + direita.label + ");\n";
+						string t_i0cs = gentempcode(); add_var(t_i0cs, "int",  true, t_i0cs);
+						string t_i1cs = gentempcode(); add_var(t_i1cs, "int",  true, t_i1cs);
+						string t_nlcs = gentempcode(); add_var(t_nlcs, "char", true, t_nlcs);
+
+						if (direita.is_literal) {
+							// Tamanho calculado em compile-time
+							int len2 = (int)direita.label.length() - 2;
+							int tamanho = len2 + 2; // char + string + null
+							string t_sz_cs = gentempcode(); add_var(t_sz_cs, "int", true, t_sz_cs);
+							$$.traducao = esquerda.traducao + direita.traducao +
+								genMallocStr("\t" + t_sz_cs + " = " + to_string(tamanho) + ";\n", t_sz_cs, $$.label) +
+								"\t" + t_i0cs + " = 0;\n" +
+								"\t" + t_i1cs + " = 1;\n" +
+								"\t" + t_nlcs + " = '\\0';\n" +
+								"\t" + $$.label + "[" + t_i0cs + "] = " + esquerda.label + ";\n" +
+								"\t" + $$.label + "[" + t_i1cs + "] = " + t_nlcs + ";\n" +
+								"\tstrcat(" + $$.label + ", " + direita.label + ");\n";
+						} else {
+							// Tamanho desconhecido em compile-time: conta chars em runtime
+							string cnt    = gentempcode(); add_var(cnt,    "int", true, cnt);
+							string t_p2cs = gentempcode(); add_var(t_p2cs, "int", true, t_p2cs);
+							$$.traducao = esquerda.traducao + direita.traducao +
+								"\t" + cnt + " = 0;\n" +
+								genContaChars(direita.label, cnt) +
+								genMallocStr("\t" + t_p2cs + " = " + cnt + " + 2;\n", t_p2cs, $$.label) +
+								"\t" + t_i0cs + " = 0;\n" +
+								"\t" + t_i1cs + " = 1;\n" +
+								"\t" + t_nlcs + " = '\\0';\n" +
+								"\t" + $$.label + "[" + t_i0cs + "] = " + esquerda.label + ";\n" +
+								"\t" + $$.label + "[" + t_i1cs + "] = " + t_nlcs + ";\n" +
+								"\tstrcat(" + $$.label + ", " + direita.label + ");\n";
+						}
 
 					} else if (esquerda.tipo == "char" && direita.tipo == "char") {
 						// Concatenacao char + char: dois chars viram uma string de 2 caracteres
 						$$.label = gentempcode();
 						$$.tipo = "string";
 						$$.is_literal = false;
+						$$.owns_memory = true;
 						add_var($$.label, "string", true, $$.label);
 
 						string t_sz3   = gentempcode(); add_var(t_sz3,   "int",  true, t_sz3);
@@ -913,8 +990,9 @@
 					string temp = gentempcode();
 					add_var($2.label, $1.label, false, temp);
 
-					if ($1.label == "string") {
-						// Aloca string vazia (1 byte) — reatribuicao futura dara free+realloc
+						if ($1.label == "string") {
+						// Aloca string vazia (1 byte): garante que a variavel seja valida
+						// mesmo sem atribuicao previa, evitando segfault em printf etc.
 						string t_cnt0  = gentempcode(); add_var(t_cnt0,  "int",  true, t_cnt0);
 						string t_idx0a = gentempcode(); add_var(t_idx0a, "int",  true, t_idx0a);
 						string t_nul0a = gentempcode(); add_var(t_nul0a, "char", true, t_nul0a);
@@ -948,8 +1026,12 @@
 							$$.traducao = $4.traducao +
 								genMallocStr("\t" + t_sz_li + " = " + to_string(tamanho) + ";\n", t_sz_li, temp) +
 								"\tstrcpy(" + temp + ", " + $4.label + ");\n";
+						} else if ($4.owns_memory) {
+							// Expressao ja e uma alocacao nova (concat): transfere ponteiro diretamente
+							$$.traducao = $4.traducao +
+								"\t" + temp + " = " + $4.label + ";\n";
 						} else {
-							// Tamanho desconhecido: conta chars sem strlen
+							// Variavel existente: precisa copiar para nao compartilhar ponteiro
 							string cnt    = gentempcode(); add_var(cnt,    "int", true, cnt);
 							string t_p1_d = gentempcode(); add_var(t_p1_d, "int", true, t_p1_d);
 							$$.traducao = $4.traducao +
@@ -995,8 +1077,14 @@
 								"\tfree(" + a.temp + ");\n" +
 								genMallocStr("\t" + t_sz_rl + " = " + to_string(tamanho) + ";\n", t_sz_rl, a.temp) +
 								"\tstrcpy(" + a.temp + ", " + $3.label + ");\n";
+						} else if ($3.owns_memory) {
+							// Alocacao nova (concat): libera antiga e transfere ponteiro diretamente
+							// Seguro pois a expressao foi totalmente avaliada antes do free
+							$$.traducao = $3.traducao +
+								"\tfree(" + a.temp + ");\n" +
+								"\t" + a.temp + " = " + $3.label + ";\n";
 						} else {
-							// Contagem em runtime sem strlen
+							// Variavel existente: precisa copiar para nao compartilhar ponteiro
 							string cnt    = gentempcode(); add_var(cnt,    "int", true, cnt);
 							string t_p1_r = gentempcode(); add_var(t_p1_r, "int", true, t_p1_r);
 							$$.traducao = $3.traducao +
