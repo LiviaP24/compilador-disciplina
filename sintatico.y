@@ -21,6 +21,15 @@
 	vector<string> pilha_continue; // labels de continue: alvo varia por tipo de loop
 	string g_switch_expr_temp = "";  // temporario da expressao do switch atual
 
+	// Variaveis de contexto para compilacao de funcoes
+	string codigo_funcoes = "";       // acumula definicoes das funcoes
+	string var_func = "";             // declaracoes de variaveis da funcao atual
+	string current_func_nome = "";    // nome da funcao sendo compilada
+	string current_func_tipo = "";    // tipo de retorno da funcao atual
+	bool dentro_funcao = false;       // true quando compilando o corpo de uma funcao
+	string label_fim_func = "";       // label de saida da funcao atual (para return/goto)
+	vector<string> current_func_param_tipos; // tipos dos parametros da funcao atual
+
 	struct atributos
 	{
 		string label;
@@ -28,6 +37,8 @@
 		string tipo;
 		bool is_literal = false;
 		bool owns_memory = false; // true quando label e uma alocacao nova (resultado de concat)
+		vector<string> arg_tipos;   // usado em args_lista para checagem de tipos
+		vector<string> arg_labels;  // usado em args_lista para labels individuais
 	};
 
 	struct variavel
@@ -38,6 +49,14 @@
 	};
 
 	vector<map<string, variavel>> pilha_escopos;
+
+	// Tabela de funcoes: chave = nome da funcao
+	struct funcao {
+		string tipo_retorno;
+		vector<string> param_tipos; // tipos dos parametros em ordem
+		string assinatura_c;        // ex: "int t1, float t2" para o cabecalho C
+	};
+	map<string, funcao> tabela_funcoes;
 
 	// Tabela de tipos: chave "operacao:tipo1:tipo2", valor = resultado
 	map<string, string> tab_tipos = {
@@ -75,6 +94,7 @@
 	string genContaChars(string, string);
 	string genMallocStr(string, string, string);
 	void add_var(string, string, bool, string);
+	void add_param(string, string, string);
 	string chave_temp();
 	bool verificacao_tabela(string);
 	variavel buscar_var(string);
@@ -87,6 +107,9 @@
 	string checar_atribuicao(string tv, string te);
 	atributos converter_p_float(atributos e);
 	atributos converter_p_int(atributos e);
+	void begin_func(string tipo, string nome);
+	void register_func(string assinatura_c);
+	void end_func(string assinatura_c, string body_traducao);
 
 	%}
 
@@ -101,6 +124,9 @@
 	%token TK_PRINTF TK_SCANF TK_STRING
 	%token TK_IF TK_ELSE TK_WHILE TK_DO TK_FOR
 	%token TK_SWITCH TK_CASE TK_DEFAULT TK_BREAK TK_CONTINUE
+	%token TK_RETURN TK_VOID
+	%token TK_PLUS_EQ TK_MINUS_EQ TK_STAR_EQ TK_SLASH_EQ
+	%token TK_INC TK_DEC
 
 	// Resolve ambiguidade do dangling-else: else tem maior precedencia
 	%nonassoc TK_THEN
@@ -120,7 +146,7 @@
 
 	%%
 
-	S 			: cmds
+	S 			: top_items
 				{
 					codigo_gerado = "/*Compilador FOCA*/\n"
 									"#include <stdio.h>\n";
@@ -128,6 +154,8 @@
 						codigo_gerado += "#include <stdlib.h>\n";
 						codigo_gerado += "#include <string.h>\n";
 					}
+					codigo_gerado += "\n";
+					codigo_gerado += codigo_funcoes;
 					codigo_gerado += "int main(void) {\n";
 					
 					codigo_gerado += var;
@@ -138,6 +166,26 @@
 
 					codigo_gerado += "\treturn 0;"
 								"\n}\n";
+				}
+				;
+
+	top_items	: top_items top_item
+				{
+					$$.traducao = $1.traducao + $2.traducao;
+				}
+				| top_item
+				{
+					$$.traducao = $1.traducao;
+				}
+				;
+
+	top_item	: cmd
+				{
+					$$.traducao = $1.traducao;
+				}
+				| FUNC_DEF
+				{
+					$$.traducao = "";
 				}
 				;
 
@@ -202,6 +250,42 @@
 						exit(1);
 					}
 					$$.traducao = "\tgoto " + pilha_continue.back() + ";\n";
+				}
+				| TK_RETURN E ';'
+				{
+					// return com valor: seta temporario de retorno e pula para o fim
+					if (!dentro_funcao) {
+						yyerror("'return' fora de funcao");
+						exit(1);
+					}
+					if (current_func_tipo == "void") {
+						yyerror("Funcao '" + current_func_nome + "' e void e nao pode retornar valor");
+						exit(1);
+					}
+					atributos expr = $2;
+					string acao = checar_atribuicao(current_func_tipo, expr.tipo);
+					if (acao == "") {
+						yyerror("Tipo de retorno invalido em '" + current_func_nome + "': esperado '" + current_func_tipo + "', recebeu '" + expr.tipo + "'");
+						exit(1);
+					}
+					if (acao == "promove") expr = converter_p_float(expr);
+					// 3-enderecos: _ret_f = expr; goto L_fim_f;
+					$$.traducao = expr.traducao
+					           + "\t_ret_" + current_func_nome + " = " + expr.label + ";\n"
+					           + "\tgoto " + label_fim_func + ";\n";
+				}
+				| TK_RETURN ';'
+				{
+					// return sem valor: so valido em funcoes void
+					if (!dentro_funcao) {
+						yyerror("'return' fora de funcao");
+						exit(1);
+					}
+					if (current_func_tipo != "void") {
+						yyerror("Funcao '" + current_func_nome + "' deve retornar um valor do tipo '" + current_func_tipo + "'");
+						exit(1);
+					}
+					$$.traducao = "\tgoto " + label_fim_func + ";\n";
 				}
 				| TK_IF '(' E ')' cmd %prec TK_THEN
 				{
@@ -978,6 +1062,153 @@
 					add_var($$.label, "char", true, $$.label);
 					$$.traducao = $3.traducao + "\t" + $$.label + " = " + v.temp + "[" + $3.label + "];\n";
 				}
+				| TK_VARIAVEL '(' args_lista ')'
+				{
+					// Chamada de funcao: t1 = f(a, b)  — formato 3 enderecos
+					string func_nome = $1.label;
+					if (!tabela_funcoes.count(func_nome)) {
+						yyerror("Funcao nao declarada: " + func_nome);
+						exit(1);
+					}
+					funcao& f = tabela_funcoes[func_nome];
+					vector<string>& arg_ts  = $3.arg_tipos;
+					vector<string>& arg_lbs = $3.arg_labels;
+					if (arg_ts.size() != f.param_tipos.size()) {
+						yyerror("Funcao '" + func_nome + "' espera " + to_string(f.param_tipos.size()) + " argumento(s), recebeu " + to_string(arg_ts.size()));
+						exit(1);
+					}
+					// Verifica tipos e aplica promocao int->float quando necessario
+					string trad_args = $3.traducao;
+					string label_args = "";
+					for (int i = 0; i < (int)f.param_tipos.size(); i++) {
+						string at = arg_ts[i];
+						string pt = f.param_tipos[i];
+						string al = arg_lbs[i];
+						if (at != pt) {
+							if (pt == "float" && at == "int") {
+								// promocao automatica int->float
+								atributos tmp; tmp.label = al; tmp.tipo = at; tmp.traducao = "";
+								atributos conv = converter_p_float(tmp);
+								trad_args += conv.traducao;
+								al = conv.label;
+							} else {
+								yyerror("Argumento " + to_string(i+1) + " de '" + func_nome + "': esperado '" + pt + "', recebeu '" + at + "'");
+								exit(1);
+							}
+						}
+						if (i > 0) label_args += ", ";
+						label_args += al;
+					}
+					if (f.tipo_retorno == "void") {
+						// Chamada void: apenas o efeito colateral
+						$$.traducao = trad_args + "\t" + func_nome + "(" + label_args + ");\n";
+						$$.label = "";
+						$$.tipo = "void";
+					} else {
+						// t = f(args)  — instrucao de 3 enderecos
+						string t = gentempcode();
+						add_var(t, f.tipo_retorno, true, t);
+						$$.label = t;
+						$$.tipo  = f.tipo_retorno;
+						$$.traducao = trad_args + "\t" + t + " = " + func_nome + "(" + label_args + ");\n";
+					}
+				}
+				| TK_INC TK_VARIAVEL
+				{
+					// Pre-incremento: ++x
+					// t1 = 1; t2 = x + t1; x = t2;
+					// resultado da expressao = x (novo valor)
+					if (!verificacao_tabela($2.label)) {
+						yyerror("Variavel nao declarada: " + $2.label);
+						exit(1);
+					}
+					variavel v = buscar_var($2.label);
+					if (v.tipo != "int" && v.tipo != "float") {
+						yyerror("Operador '++' aplicado a tipo nao numerico '" + v.tipo + "'");
+						exit(1);
+					}
+					string t1 = gentempcode(); add_var(t1, v.tipo, true, t1);
+					string t2 = gentempcode(); add_var(t2, v.tipo, true, t2);
+					string um = (v.tipo == "float") ? "1.0" : "1";
+					$$.traducao = "\t" + t1 + " = " + um + ";\n"
+					           + "\t" + t2 + " = " + v.temp + " + " + t1 + ";\n"
+					           + "\t" + v.temp + " = " + t2 + ";\n";
+					$$.label = v.temp; // resultado e o novo valor
+					$$.tipo  = v.tipo;
+				}
+				| TK_DEC TK_VARIAVEL
+				{
+					// Pre-decremento: --x
+					// t1 = 1; t2 = x - t1; x = t2;
+					// resultado da expressao = x (novo valor)
+					if (!verificacao_tabela($2.label)) {
+						yyerror("Variavel nao declarada: " + $2.label);
+						exit(1);
+					}
+					variavel v = buscar_var($2.label);
+					if (v.tipo != "int" && v.tipo != "float") {
+						yyerror("Operador '--' aplicado a tipo nao numerico '" + v.tipo + "'");
+						exit(1);
+					}
+					string t1 = gentempcode(); add_var(t1, v.tipo, true, t1);
+					string t2 = gentempcode(); add_var(t2, v.tipo, true, t2);
+					string um = (v.tipo == "float") ? "1.0" : "1";
+					$$.traducao = "\t" + t1 + " = " + um + ";\n"
+					           + "\t" + t2 + " = " + v.temp + " - " + t1 + ";\n"
+					           + "\t" + v.temp + " = " + t2 + ";\n";
+					$$.label = v.temp; // resultado e o novo valor
+					$$.tipo  = v.tipo;
+				}
+				| TK_VARIAVEL TK_INC
+				{
+					// Pos-incremento: x++
+					// t_old = x; t1 = 1; t2 = x + t1; x = t2;
+					// resultado da expressao = t_old (valor ANTES do incremento)
+					if (!verificacao_tabela($1.label)) {
+						yyerror("Variavel nao declarada: " + $1.label);
+						exit(1);
+					}
+					variavel v = buscar_var($1.label);
+					if (v.tipo != "int" && v.tipo != "float") {
+						yyerror("Operador '++' aplicado a tipo nao numerico '" + v.tipo + "'");
+						exit(1);
+					}
+					string t_old = gentempcode(); add_var(t_old, v.tipo, true, t_old);
+					string t1    = gentempcode(); add_var(t1,    v.tipo, true, t1);
+					string t2    = gentempcode(); add_var(t2,    v.tipo, true, t2);
+					string um = (v.tipo == "float") ? "1.0" : "1";
+					$$.traducao = "\t" + t_old + " = " + v.temp + ";\n"  // salva valor antigo
+					           + "\t" + t1 + " = " + um + ";\n"
+					           + "\t" + t2 + " = " + v.temp + " + " + t1 + ";\n"
+					           + "\t" + v.temp + " = " + t2 + ";\n";
+					$$.label = t_old; // resultado e o valor ANTIGO
+					$$.tipo  = v.tipo;
+				}
+				| TK_VARIAVEL TK_DEC
+				{
+					// Pos-decremento: x--
+					// t_old = x; t1 = 1; t2 = x - t1; x = t2;
+					// resultado da expressao = t_old (valor ANTES do decremento)
+					if (!verificacao_tabela($1.label)) {
+						yyerror("Variavel nao declarada: " + $1.label);
+						exit(1);
+					}
+					variavel v = buscar_var($1.label);
+					if (v.tipo != "int" && v.tipo != "float") {
+						yyerror("Operador '--' aplicado a tipo nao numerico '" + v.tipo + "'");
+						exit(1);
+					}
+					string t_old = gentempcode(); add_var(t_old, v.tipo, true, t_old);
+					string t1    = gentempcode(); add_var(t1,    v.tipo, true, t1);
+					string t2    = gentempcode(); add_var(t2,    v.tipo, true, t2);
+					string um = (v.tipo == "float") ? "1.0" : "1";
+					$$.traducao = "\t" + t_old + " = " + v.temp + ";\n"  // salva valor antigo
+					           + "\t" + t1 + " = " + um + ";\n"
+					           + "\t" + t2 + " = " + v.temp + " - " + t1 + ";\n"
+					           + "\t" + v.temp + " = " + t2 + ";\n";
+					$$.label = t_old; // resultado e o valor ANTIGO
+					$$.tipo  = v.tipo;
+				}
 				;
 	D			: TK_TIPO TK_VARIAVEL
 				{
@@ -1108,8 +1339,165 @@
 
 						$$.traducao = expressao.traducao + "\t" + a.temp + " = " + expressao.label + ";\n";
 					}
-				} 
+				}
+				| TK_VARIAVEL TK_PLUS_EQ E
+				{
+					// x += e  ≡  t = x + e; x = t  (3 enderecos)
+					if (!verificacao_tabela($1.label)) { yyerror("Variavel nao declarada: " + $1.label); exit(1); }
+					variavel a = buscar_var($1.label);
+					atributos lhs; lhs.label = a.temp; lhs.tipo = a.tipo; lhs.traducao = "";
+					string tipoFinal = checar_aritmetico(a.tipo, $3.tipo);
+					if (tipoFinal == "") { yyerror("Operador '+=' invalido entre '" + a.tipo + "' e '" + $3.tipo + "'"); exit(1); }
+					if (tipoFinal != a.tipo) { yyerror("Operador '+=' produziria tipo '" + tipoFinal + "' incompativel com variavel '" + $1.label + "' do tipo '" + a.tipo + "'"); exit(1); }
+					atributos expr = $3;
+					if (tipoFinal == "float") { if (lhs.tipo != "float") lhs = converter_p_float(lhs); if (expr.tipo != "float") expr = converter_p_float(expr); }
+					string t = gentempcode(); add_var(t, tipoFinal, true, t);
+					$$.traducao = expr.traducao + lhs.traducao
+					           + "\t" + t + " = " + lhs.label + " + " + expr.label + ";\n"
+					           + "\t" + a.temp + " = " + t + ";\n";
+				}
+				| TK_VARIAVEL TK_MINUS_EQ E
+				{
+					// x -= e  ≡  t = x - e; x = t  (3 enderecos)
+					if (!verificacao_tabela($1.label)) { yyerror("Variavel nao declarada: " + $1.label); exit(1); }
+					variavel a = buscar_var($1.label);
+					atributos lhs; lhs.label = a.temp; lhs.tipo = a.tipo; lhs.traducao = "";
+					string tipoFinal = checar_aritmetico(a.tipo, $3.tipo);
+					if (tipoFinal == "") { yyerror("Operador '-=' invalido entre '" + a.tipo + "' e '" + $3.tipo + "'"); exit(1); }
+					if (tipoFinal != a.tipo) { yyerror("Operador '-=' produziria tipo '" + tipoFinal + "' incompativel com variavel '" + $1.label + "' do tipo '" + a.tipo + "'"); exit(1); }
+					atributos expr = $3;
+					if (tipoFinal == "float") { if (lhs.tipo != "float") lhs = converter_p_float(lhs); if (expr.tipo != "float") expr = converter_p_float(expr); }
+					string t = gentempcode(); add_var(t, tipoFinal, true, t);
+					$$.traducao = expr.traducao + lhs.traducao
+					           + "\t" + t + " = " + lhs.label + " - " + expr.label + ";\n"
+					           + "\t" + a.temp + " = " + t + ";\n";
+				}
+				| TK_VARIAVEL TK_STAR_EQ E
+				{
+					// x *= e  ≡  t = x * e; x = t  (3 enderecos)
+					if (!verificacao_tabela($1.label)) { yyerror("Variavel nao declarada: " + $1.label); exit(1); }
+					variavel a = buscar_var($1.label);
+					atributos lhs; lhs.label = a.temp; lhs.tipo = a.tipo; lhs.traducao = "";
+					string tipoFinal = checar_aritmetico(a.tipo, $3.tipo);
+					if (tipoFinal == "") { yyerror("Operador '*=' invalido entre '" + a.tipo + "' e '" + $3.tipo + "'"); exit(1); }
+					if (tipoFinal != a.tipo) { yyerror("Operador '*=' produziria tipo '" + tipoFinal + "' incompativel com variavel '" + $1.label + "' do tipo '" + a.tipo + "'"); exit(1); }
+					atributos expr = $3;
+					if (tipoFinal == "float") { if (lhs.tipo != "float") lhs = converter_p_float(lhs); if (expr.tipo != "float") expr = converter_p_float(expr); }
+					string t = gentempcode(); add_var(t, tipoFinal, true, t);
+					$$.traducao = expr.traducao + lhs.traducao
+					           + "\t" + t + " = " + lhs.label + " * " + expr.label + ";\n"
+					           + "\t" + a.temp + " = " + t + ";\n";
+				}
+				| TK_VARIAVEL TK_SLASH_EQ E
+				{
+					// x /= e  ≡  t = x / e; x = t  (3 enderecos)
+					if (!verificacao_tabela($1.label)) { yyerror("Variavel nao declarada: " + $1.label); exit(1); }
+					variavel a = buscar_var($1.label);
+					atributos lhs; lhs.label = a.temp; lhs.tipo = a.tipo; lhs.traducao = "";
+					string tipoFinal = checar_aritmetico(a.tipo, $3.tipo);
+					if (tipoFinal == "") { yyerror("Operador '/=' invalido entre '" + a.tipo + "' e '" + $3.tipo + "'"); exit(1); }
+					if (tipoFinal != a.tipo) { yyerror("Operador '/=' produziria tipo '" + tipoFinal + "' incompativel com variavel '" + $1.label + "' do tipo '" + a.tipo + "'"); exit(1); }
+					atributos expr = $3;
+					if (tipoFinal == "float") { if (lhs.tipo != "float") lhs = converter_p_float(lhs); if (expr.tipo != "float") expr = converter_p_float(expr); }
+					string t = gentempcode(); add_var(t, tipoFinal, true, t);
+					$$.traducao = expr.traducao + lhs.traducao
+					           + "\t" + t + " = " + lhs.label + " / " + expr.label + ";\n"
+					           + "\t" + a.temp + " = " + t + ";\n";
+				}
 				;
+
+	// ---- Regras auxiliares para chamadas de funcao ----
+
+	args_lista	: /* vazio */
+				{
+					$$.label = ""; $$.traducao = "";
+					$$.arg_tipos.clear(); $$.arg_labels.clear();
+				}
+				| E
+				{
+					$$.label    = $1.label;
+					$$.traducao = $1.traducao;
+					$$.arg_tipos  = { $1.tipo };
+					$$.arg_labels = { $1.label };
+				}
+				| args_lista ',' E
+				{
+					$$.traducao   = $1.traducao + $3.traducao;
+					$$.arg_tipos  = $1.arg_tipos;  $$.arg_tipos.push_back($3.tipo);
+					$$.arg_labels = $1.arg_labels; $$.arg_labels.push_back($3.label);
+					$$.label = "";
+					for (int i = 0; i < (int)$$.arg_labels.size(); i++) {
+						if (i > 0) $$.label += ", ";
+						$$.label += $$.arg_labels[i];
+					}
+				}
+				;
+
+	// ---- Declaracao de funcoes ----
+
+	params_decl	: /* vazio */
+				{ $$.label = ""; }
+				| param_lista
+				{ $$.label = $1.label; }
+				;
+
+	param_lista	: param_item
+				{ $$.label = $1.label; }
+				| param_lista ',' param_item
+				{ $$.label = $1.label + ", " + $3.label; }
+				;
+
+	param_item	: TK_TIPO TK_VARIAVEL
+				{
+					// Registra o parametro no escopo da funcao (sem declarar em var)
+					string temp = gentempcode();
+					add_param($2.label, $1.label, temp);
+					current_func_param_tipos.push_back($1.label);
+					string tipo_c = ($1.label == "bool")   ? "int"   :
+					               ($1.label == "string") ? "char*" : $1.label;
+					$$.label = tipo_c + " " + temp; // ex: "int t5"
+				}
+				;
+
+	BLOCO_FUNC	: '{' cmds '}'
+				{ $$.traducao = $2.traducao; }
+				| '{' '}'
+				{ $$.traducao = ""; }
+				;
+
+	// FUNC_DEF com TK_TIPO (int, float, char, bool, string)
+	FUNC_DEF	: TK_TIPO TK_VARIAVEL
+				{
+					// Acao antes de parsear parametros: configura contexto da funcao
+					begin_func($1.label, $2.label);
+				}
+				'(' params_decl ')'
+				{
+					// Registra funcao na tabela (permite recursao)
+					register_func($5.label);
+				}
+				BLOCO_FUNC
+				{
+					// Gera o codigo C da funcao
+					end_func($5.label, $8.traducao);
+					$$.traducao = "";
+				}
+				// FUNC_DEF com TK_VOID
+				| TK_VOID TK_VARIAVEL
+				{
+					begin_func("void", $2.label);
+				}
+				'(' params_decl ')'
+				{
+					register_func($5.label);
+				}
+				BLOCO_FUNC
+				{
+					end_func($5.label, $8.traducao);
+					$$.traducao = "";
+				}
+				;
+
 	%%
 
 	#include "lex.yy.c"
@@ -1193,6 +1581,9 @@
 		if (tipo == "string") usa_string = true;
 		string tipo_c = (tipo == "bool") ? "int" : (tipo == "string") ? "char *" : tipo;
 
+		// Quando dentro de uma funcao, declaracoes vao para var_func (nao para var do main)
+		string& var_ref = dentro_funcao ? var_func : var;
+
 		if (!temp) {
 			// Verifica redeclaracao apenas no escopo atual (topo da pilha)
 			if (pilha_escopos.back().find(nome) != pilha_escopos.back().end()) {
@@ -1206,7 +1597,7 @@
 			v.temp = vars_temp;
 
 			pilha_escopos.back()[nome] = v;
-			var += "\t" + tipo_c + " " + vars_temp + ";\n";
+			var_ref += "\t" + tipo_c + " " + vars_temp + ";\n";
 		} else {
 			variavel v;
 			v.tipo = tipo;
@@ -1214,8 +1605,19 @@
 			v.temp = nome;
 
 			pilha_escopos.back()[chave_temp()] = v;
-			var += "\t" + tipo_c + " " + vars_temp + ";\n";
+			var_ref += "\t" + tipo_c + " " + vars_temp + ";\n";
 		}
+	}
+
+	// Registra um parametro formal no escopo da funcao sem gerar declaracao
+	// (parametros ja aparecem na assinatura da funcao C gerada)
+	void add_param(string nome, string tipo, string temp) {
+		if (tipo == "string") usa_string = true;
+		variavel v;
+		v.tipo  = tipo;
+		v.valor = "";
+		v.temp  = temp;
+		pilha_escopos.back()[nome] = v;
 	}
 
 	string checar_aritmetico(string t1, string t2) {
@@ -1274,6 +1676,69 @@
 		novo.traducao = e.traducao + "\t" + novo.label + " = (int) " + e.label + ";\n";
 
 		return novo;
+	}
+
+	// ---- Funcoes auxiliares para geracao de funcoes ----
+
+	// Inicia o contexto de compilacao de uma funcao
+	void begin_func(string tipo, string nome) {
+		if (tabela_funcoes.count(nome)) {
+			yyerror("Funcao ja declarada: " + nome);
+			exit(1);
+		}
+		current_func_nome = nome;
+		current_func_tipo = tipo;
+		dentro_funcao = true;
+		label_fim_func = genLabel();
+		var_func = "";
+		current_func_param_tipos.clear();
+		entra_escopo(); // escopo da funcao (contem os parametros)
+	}
+
+	// Registra a funcao na tabela (chamado apos parsear os parametros)
+	// Deve ser chamado antes do corpo para permitir recursao
+	void register_func(string assinatura_c) {
+		funcao f;
+		f.tipo_retorno  = current_func_tipo;
+		f.param_tipos   = current_func_param_tipos;
+		f.assinatura_c  = assinatura_c;
+		tabela_funcoes[current_func_nome] = f;
+	}
+
+	// Finaliza a compilacao de uma funcao e emite o codigo C gerado
+	void end_func(string assinatura_c, string body_traducao) {
+		sai_escopo(); // fecha o escopo da funcao
+		dentro_funcao = false;
+
+		string tipo_ret_c = (current_func_tipo == "void")   ? "void"  :
+		                    (current_func_tipo == "bool")   ? "int"   :
+		                    (current_func_tipo == "string") ? "char*" :
+		                    current_func_tipo;
+
+		string ret_decl = "";
+		string ret_stmt = "";
+		if (current_func_tipo != "void") {
+			// Variavel de retorno: _ret_nomefunc
+			string ret_label = "_ret_" + current_func_nome;
+			ret_decl = "\t" + tipo_ret_c + " " + ret_label + ";\n";
+			// Instrucao de retorno explicita (estilo 3 enderecos: _ret = valor; goto Lfim; Lfim: return _ret)
+			ret_stmt = "\treturn " + ret_label + ";\n";
+		}
+
+		// Emite a definicao completa da funcao C
+		codigo_funcoes += tipo_ret_c + " " + current_func_nome + "(" + assinatura_c + ") {\n"
+		               + ret_decl
+		               + var_func
+		               + "\n"
+		               + body_traducao
+		               + "\t" + label_fim_func + ": ;\n"
+		               + ret_stmt
+		               + "}\n\n";
+
+		// Limpa o contexto
+		var_func = "";
+		current_func_nome = "";
+		current_func_tipo = "";
 	}
 
 	int main(int argc, char* argv[])

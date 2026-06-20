@@ -1,0 +1,16 @@
+int x;
+x = 5;
+
+int a;
+a = x++;
+printf("%d %d\n", x, a);
+
+int b;
+b = ++x;
+printf("%d %d\n", x, b);
+
+x--;
+printf("%d\n", x);
+
+--x;
+printf("%d\n", x);

@@ -1,0 +1,13 @@
+int soma(int a, int b) {
+    int r;
+    r = a + b;
+    return r;
+}
+
+int x;
+int y;
+int res;
+x = 10;
+y = 5;
+res = soma(x, y);
+printf("%d\n", res);

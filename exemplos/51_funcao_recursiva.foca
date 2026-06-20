@@ -1,0 +1,12 @@
+int fat(int n) {
+    if (n <= 1) {
+        return 1;
+    }
+    int r;
+    r = fat(n - 1);
+    return n * r;
+}
+
+printf("%d\n", fat(5));
+printf("%d\n", fat(1));
+printf("%d\n", fat(0));

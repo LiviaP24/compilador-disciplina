@@ -1,0 +1,7 @@
+int soma(int a, int b) {
+    return a + b;
+}
+bool x;
+x = true;
+int r;
+r = soma(x, 2);

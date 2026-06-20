@@ -1,0 +1,5 @@
+int x;
+x = 5;
+float f;
+f = 2.0;
+x += f;
