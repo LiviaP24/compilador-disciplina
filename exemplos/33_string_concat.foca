@@ -1,0 +1,10 @@
+string a = "hello";
+string b = " world";
+string c = a + b;
+printf("%s\n", c);
+
+string d = "foo" + a;
+printf("%s\n", d);
+
+string e = a + "!";
+printf("%s\n", e);

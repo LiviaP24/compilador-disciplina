@@ -1,0 +1,5 @@
+int x;
+x = 10;
+if (x > 5) {
+    printf("maior que 5\n");
+}

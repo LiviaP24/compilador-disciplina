@@ -1,0 +1,52 @@
+/*Compilador FOCA*/
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+int main(void) {
+        char * t1;
+        int t2;
+        int t3;
+        int t4;
+        char * t5;
+        int t6;
+        int t7;
+        char t8;
+        int t9;
+        int t10;
+        int t11;
+        int t12;
+        int t13;
+        int t14;
+        char t15;
+        int t16;
+
+        t2 = 11;
+        t3 = sizeof(char);
+        t4 = t2 * t3;
+        t1 = (char*) malloc(t4);
+        strcpy(t1, "compilador");
+        t6 = 1;
+        t9 = sizeof(char);
+        t10 = t6 * t9;
+        t5 = (char*) malloc(t10);
+        t7 = 0;
+        t8 = '\0';
+        t5[t7] = t8;
+        t11 = 0;
+        L1:
+        t15 = t1[t11];
+        t16 = (t15 == '\0');
+        if (t16) goto L2;
+        t11 = t11 + 1;
+        goto L1;
+        L2: ;
+        free(t5);
+        t12 = t11 + 1;
+        t13 = sizeof(char);
+        t14 = t12 * t13;
+        t5 = (char*) malloc(t14);
+        strcpy(t5, t1);
+        printf("%s\n", t1);
+        printf("%s\n", t5);
+        return 0;
+}

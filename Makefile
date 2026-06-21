@@ -24,13 +24,19 @@ translate: glf
 run: glf
 		./glf < $(FILE) > /tmp/foca_output.c && gcc /tmp/foca_output.c -o /tmp/foca_output && /tmp/foca_output
 
+runwin: glf
+		./glf < $(FILE) > saida.c && gcc saida.c -o saida.exe && ./saida.exe
+
 test: glf
 	@pass=0; fail=0; \
 	for f in exemplos/*.foca; do \
 		name=$$(basename $$f .foca); \
 		expected="exemplos/$$name.expected"; \
 		if [ -f "$$expected" ]; then \
-			if ./glf < $$f 2>/dev/null | diff -q - $$expected > /dev/null 2>&1; then \
+			./glf < $$f > /tmp/_foca_out 2> /tmp/_foca_err; \
+			rc=$$?; \
+			if [ $$rc -eq 0 ]; then actual=/tmp/_foca_out; else actual=/tmp/_foca_err; fi; \
+			if diff -q $$actual $$expected > /dev/null 2>&1; then \
 				echo "  PASS: $$name"; \
 				pass=$$((pass + 1)); \
 			else \
@@ -52,13 +58,16 @@ test-%: glf
 	expected=$$(echo $$foca | sed 's/.foca/.expected/'); \
 	echo "Entrada: $$foca"; \
 	echo "---"; \
-	./glf < $$foca; \
+	./glf < $$foca > /tmp/_foca_out 2> /tmp/_foca_err; \
+	rc=$$?; \
+	if [ $$rc -eq 0 ]; then cat /tmp/_foca_out; actual=/tmp/_foca_out; \
+	else cat /tmp/_foca_err; actual=/tmp/_foca_err; fi; \
 	echo "---"; \
-	if diff <(./glf < $$foca 2>/dev/null) $$expected > /dev/null 2>&1; then \
+	if [ -f "$$expected" ] && diff $$actual $$expected > /dev/null 2>&1; then \
 		echo "PASS"; \
 	else \
 		echo "FAIL - Diferenca:"; \
-		diff <(./glf < $$foca 2>/dev/null) $$expected; \
+		[ -f "$$expected" ] && diff $$actual $$expected; \
 	fi
 
 clean:

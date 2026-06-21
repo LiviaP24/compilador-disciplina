@@ -1,0 +1,119 @@
+/*Compilador FOCA*/
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+int main(void) {
+        char * t1;
+        int t2;
+        int t3;
+        int t4;
+        char * t5;
+        int t6;
+        int t7;
+        int t8;
+        char * t9;
+        int t10;
+        int t11;
+        int t12;
+        int t13;
+        int t14;
+        int t15;
+        char t16;
+        int t17;
+        char t18;
+        int t19;
+        char * t20;
+        char * t21;
+        int t22;
+        int t23;
+        int t24;
+        int t25;
+        int t26;
+        int t27;
+        char t28;
+        int t29;
+        char * t30;
+        char * t31;
+        int t32;
+        int t33;
+        int t34;
+        int t35;
+        int t36;
+        int t37;
+        char t38;
+        int t39;
+        char * t40;
+
+        t2 = 6;
+        t3 = sizeof(char);
+        t4 = t2 * t3;
+        t1 = (char*) malloc(t4);
+        strcpy(t1, "hello");
+        t6 = 7;
+        t7 = sizeof(char);
+        t8 = t6 * t7;
+        t5 = (char*) malloc(t8);
+        strcpy(t5, " world");
+        t10 = 0;
+        L3:
+        t18 = t1[t10];
+        t19 = (t18 == '\0');
+        if (t19) goto L4;
+        t10 = t10 + 1;
+        goto L3;
+        L4: ;
+        t11 = 0;
+        L1:
+        t16 = t5[t11];
+        t17 = (t16 == '\0');
+        if (t17) goto L2;
+        t11 = t11 + 1;
+        goto L1;
+        L2: ;
+        t12 = t10 + t11;
+        t13 = t12 + 1;
+        t14 = sizeof(char);
+        t15 = t13 * t14;
+        t9 = (char*) malloc(t15);
+        strcpy(t9, t1);
+        strcat(t9, t5);
+        t20 = t9;
+        printf("%s\n", t20);
+        t22 = 0;
+        L5:
+        t28 = t1[t22];
+        t29 = (t28 == '\0');
+        if (t29) goto L6;
+        t22 = t22 + 1;
+        goto L5;
+        L6: ;
+        t23 = 3;
+        t24 = t23 + t22;
+        t25 = t24 + 1;
+        t26 = sizeof(char);
+        t27 = t25 * t26;
+        t21 = (char*) malloc(t27);
+        strcpy(t21, "foo");
+        strcat(t21, t1);
+        t30 = t21;
+        printf("%s\n", t30);
+        t32 = 0;
+        L7:
+        t38 = t1[t32];
+        t39 = (t38 == '\0');
+        if (t39) goto L8;
+        t32 = t32 + 1;
+        goto L7;
+        L8: ;
+        t33 = 1;
+        t34 = t32 + t33;
+        t35 = t34 + 1;
+        t36 = sizeof(char);
+        t37 = t35 * t36;
+        t31 = (char*) malloc(t37);
+        strcpy(t31, t1);
+        strcat(t31, "!");
+        t40 = t31;
+        printf("%s\n", t40);
+        return 0;
+}

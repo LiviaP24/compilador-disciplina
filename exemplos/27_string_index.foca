@@ -1,0 +1,4 @@
+string s = "abc";
+char c = s[1];
+printf("%s\n", s);
+printf("%c\n", c);

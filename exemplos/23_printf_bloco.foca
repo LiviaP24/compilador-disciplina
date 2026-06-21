@@ -1,0 +1,8 @@
+int x;
+x = 5;
+{
+    int y;
+    y = x + 10;
+    printf("x=%d y=%d\n", x, y);
+}
+printf("fora do bloco x=%d\n", x);
