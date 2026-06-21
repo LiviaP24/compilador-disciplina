@@ -39,16 +39,24 @@
 		bool owns_memory = false; // true quando label e uma alocacao nova (resultado de concat)
 		vector<string> arg_tipos;   // usado em args_lista para checagem de tipos
 		vector<string> arg_labels;  // usado em args_lista para labels individuais
-	};
 
+		vector<string> init_labels;
+    	vector<string> init_tipos;
+    	vector<string> init_traducoes;
+    	int init_linhas = 0;
+    	int init_colunas = 0;
+	};
+	
 	struct variavel
 	{
 		string temp;
 		string tipo;
 		string valor;
-	};
 
-	vector<map<string, variavel>> pilha_escopos;
+		bool eh_matriz = false;
+		int linhas = 0;
+		int colunas = 0;
+	};
 
 	// Tabela de funcoes: chave = nome da funcao
 	struct funcao {
@@ -110,6 +118,14 @@
 	void begin_func(string tipo, string nome);
 	void register_func(string assinatura_c);
 	void end_func(string assinatura_c, string body_traducao);
+	int str_to_int(string s);
+
+	//Matrizes
+	string tipo_c_de(string tipo);
+	void add_matriz(string nome, string tipo_base, string temp, int linhas, int colunas);
+	atributos gen_indice_matriz(string nome, variavel v, atributos linha, atributos coluna);
+	variavel buscar_var_escalar(string nome, string contexto);
+	vector<map<string, variavel>> pilha_escopos;
 
 	%}
 
@@ -502,6 +518,12 @@
 						exit(1);
 					}
 					variavel sv = buscar_var($1.label);
+
+					if (sv.eh_matriz) {
+    					yyerror("scanf nao pode receber uma matriz inteira. Use uma celula, como m[i][j].");
+    					exit(1);
+					}
+
 					if (sv.tipo == "string") {
 						string t_bsz = gentempcode(); add_var(t_bsz, "int",    true, t_bsz);
 						string t_tmp = gentempcode(); add_var(t_tmp, "string", true, t_tmp);
@@ -529,6 +551,12 @@
 						exit(1);
 					}
 					variavel sv = buscar_var($3.label);
+
+					if (sv.eh_matriz) {
+    					yyerror("scanf nao pode receber uma matriz inteira. Use uma celula, como m[i][j].");
+    					exit(1);
+					}
+
 					if (sv.tipo == "string") {
 						string t_bsz = gentempcode(); add_var(t_bsz, "int",    true, t_bsz);
 						string t_tmp = gentempcode(); add_var(t_tmp, "string", true, t_tmp);
@@ -550,6 +578,36 @@
 						$$.traducao = $1.traducao;
 						$$.tipo     = $1.tipo;
 					}
+				}
+				| TK_VARIAVEL '[' E ']' '[' E ']'
+				{
+				    if (!verificacao_tabela($1.label)) {
+				        yyerror("Variavel nao declarada: " + $1.label);
+				        exit(1);
+				    }
+				
+				    variavel v = buscar_var($1.label);
+				
+				    atributos indice = gen_indice_matriz($1.label, v, $3, $6);
+				
+				    $$.label = "&" + v.temp + "[" + indice.label + "]";
+				    $$.traducao = indice.traducao;
+				    $$.tipo = "";
+				}
+				| scanf_args ',' TK_VARIAVEL '[' E ']' '[' E ']'
+				{
+				    if (!verificacao_tabela($3.label)) {
+				        yyerror("Variavel nao declarada: " + $3.label);
+				        exit(1);
+				    }
+				
+				    variavel v = buscar_var($3.label);
+				
+				    atributos indice = gen_indice_matriz($3.label, v, $5, $8);
+				
+				    $$.label = $1.label + ", &" + v.temp + "[" + indice.label + "]";
+				    $$.traducao = $1.traducao + indice.traducao;
+				    $$.tipo = $1.tipo;
 				}
 				;
 
@@ -848,7 +906,13 @@
 						yyerror("Variavel nao declarada");
 						exit(1);
 					}
+
 					variavel x = buscar_var($1.label);
+
+					if (x.eh_matriz) {
+    					yyerror("Matriz precisa ser acessada com dois indices: " + $1.label + "[linha][coluna]");
+   						exit(1);
+					}
 
 					$$.label = x.temp;
 					$$.tipo = x.tipo;
@@ -1118,11 +1182,14 @@
 					// Pre-incremento: ++x
 					// t1 = 1; t2 = x + t1; x = t2;
 					// resultado da expressao = x (novo valor)
-					if (!verificacao_tabela($2.label)) {
-						yyerror("Variavel nao declarada: " + $2.label);
-						exit(1);
-					}
-					variavel v = buscar_var($2.label);
+					//if (!verificacao_tabela($2.label)) {
+					//	yyerror("Variavel nao declarada: " + $2.label);
+					//	exit(1);
+					//}
+					//variavel v = buscar_var($2.label);
+
+					variavel v = buscar_var_escalar($2.label, "Operador '++'");
+
 					if (v.tipo != "int" && v.tipo != "float") {
 						yyerror("Operador '++' aplicado a tipo nao numerico '" + v.tipo + "'");
 						exit(1);
@@ -1141,11 +1208,14 @@
 					// Pre-decremento: --x
 					// t1 = 1; t2 = x - t1; x = t2;
 					// resultado da expressao = x (novo valor)
-					if (!verificacao_tabela($2.label)) {
-						yyerror("Variavel nao declarada: " + $2.label);
-						exit(1);
-					}
-					variavel v = buscar_var($2.label);
+					// if (!verificacao_tabela($2.label)) {
+					// 	yyerror("Variavel nao declarada: " + $2.label);
+					// 	exit(1);
+					// }
+					// variavel v = buscar_var($2.label);
+
+					variavel v = buscar_var_escalar($2.label, "Operador '--'");
+
 					if (v.tipo != "int" && v.tipo != "float") {
 						yyerror("Operador '--' aplicado a tipo nao numerico '" + v.tipo + "'");
 						exit(1);
@@ -1164,11 +1234,14 @@
 					// Pos-incremento: x++
 					// t_old = x; t1 = 1; t2 = x + t1; x = t2;
 					// resultado da expressao = t_old (valor ANTES do incremento)
-					if (!verificacao_tabela($1.label)) {
-						yyerror("Variavel nao declarada: " + $1.label);
-						exit(1);
-					}
-					variavel v = buscar_var($1.label);
+					//if (!verificacao_tabela($1.label)) {
+					//	yyerror("Variavel nao declarada: " + $1.label);
+					//	exit(1);
+					//}
+					//variavel v = buscar_var($1.label);
+
+					variavel v = buscar_var_escalar($1.label, "Operador '++'");
+
 					if (v.tipo != "int" && v.tipo != "float") {
 						yyerror("Operador '++' aplicado a tipo nao numerico '" + v.tipo + "'");
 						exit(1);
@@ -1189,11 +1262,14 @@
 					// Pos-decremento: x--
 					// t_old = x; t1 = 1; t2 = x - t1; x = t2;
 					// resultado da expressao = t_old (valor ANTES do decremento)
-					if (!verificacao_tabela($1.label)) {
-						yyerror("Variavel nao declarada: " + $1.label);
-						exit(1);
-					}
-					variavel v = buscar_var($1.label);
+					//if (!verificacao_tabela($1.label)) {
+					//	yyerror("Variavel nao declarada: " + $1.label);
+					//	exit(1);
+					//}
+					//variavel v = buscar_var($1.label);
+
+					variavel v = buscar_var_escalar($1.label, "Operador '--'");
+
 					if (v.tipo != "int" && v.tipo != "float") {
 						yyerror("Operador '--' aplicado a tipo nao numerico '" + v.tipo + "'");
 						exit(1);
@@ -1209,81 +1285,154 @@
 					$$.label = t_old; // resultado e o valor ANTIGO
 					$$.tipo  = v.tipo;
 				}
-				;
-	D			: TK_TIPO TK_VARIAVEL
+				| TK_VARIAVEL '[' E ']' '[' E ']'
 				{
-					// Verifica redeclaracao apenas no escopo atual
-					if(pilha_escopos.back().count($2.label)){
-						yyerror("Variavel ja declarada neste escopo: " + $2.label);
+				    if (!verificacao_tabela($1.label)) {
+				        yyerror("Variavel nao declarada: " + $1.label);
+				        exit(1);
+				    }
+
+				    variavel v = buscar_var($1.label);
+
+				    atributos indice = gen_indice_matriz($1.label, v, $3, $6);
+
+				    $$.label = gentempcode();
+				    $$.tipo = v.tipo;
+
+				    add_var($$.label, v.tipo, true, $$.label);
+
+				    $$.traducao = indice.traducao
+				                + "\t" + $$.label + " = " + v.temp + "[" + indice.label + "];\n";
+				}
+				;
+	D			:   TK_TIPO TK_VARIAVEL '[' TK_NUM ']' '[' TK_NUM ']' '=' mat_init
+            	{
+                int linhas = str_to_int($4.label);
+                int colunas = str_to_int($7.label);
+
+                if ($10.init_linhas != linhas || $10.init_colunas != colunas) {
+                    yyerror("Inicializacao da matriz '" + $2.label + "' nao bate com as dimensoes declaradas");
+                    exit(1);
+                }
+
+                string temp = gentempcode();
+
+                add_matriz($2.label, $1.label, temp, linhas, colunas);
+
+                string trad = "";
+
+                int total = linhas * colunas;
+
+                for (int k = 0; k < total; k++) {
+                    atributos elem;
+                    elem.label = $10.init_labels[k];
+                    elem.tipo = $10.init_tipos[k];
+                    elem.traducao = $10.init_traducoes[k];
+
+                    string acao = checar_atribuicao($1.label, elem.tipo);
+
+                    if (acao == "") {
+                        yyerror("Inicializacao invalida: nao e possivel colocar '" + elem.tipo +
+                                "' em matriz do tipo '" + $1.label + "'");
+                        exit(1);
+                    }
+
+                    if (acao == "promove") {
+                        elem = converter_p_float(elem);
+                    }
+
+                    string t_indice = gentempcode();
+                    add_var(t_indice, "int", true, t_indice);
+
+                    trad += elem.traducao;
+                    trad += "\t" + t_indice + " = " + to_string(k) + ";\n";
+                    trad += "\t" + temp + "[" + t_indice + "] = " + elem.label + ";\n";
+                }
+
+                $$.traducao = trad;
+            }
+            | TK_TIPO TK_VARIAVEL '[' TK_NUM ']' '[' TK_NUM ']'
+            {
+                int linhas = str_to_int($4.label);
+                int colunas = str_to_int($7.label);
+
+                string temp = gentempcode();
+
+                add_matriz($2.label, $1.label, temp, linhas, colunas);
+
+                $$.traducao = "";
+            }
+			| TK_TIPO TK_VARIAVEL
+			{
+				// Verifica redeclaracao apenas no escopo atual
+				if(pilha_escopos.back().count($2.label)){
+					yyerror("Variavel ja declarada neste escopo: " + $2.label);
+					exit(1);
+				}
+				string temp = gentempcode();
+				add_var($2.label, $1.label, false, temp);
+					if ($1.label == "string") {
+					// Aloca string vazia (1 byte): garante que a variavel seja valida
+					// mesmo sem atribuicao previa, evitando segfault em printf etc.
+					string t_cnt0  = gentempcode(); add_var(t_cnt0,  "int",  true, t_cnt0);
+					string t_idx0a = gentempcode(); add_var(t_idx0a, "int",  true, t_idx0a);
+					string t_nul0a = gentempcode(); add_var(t_nul0a, "char", true, t_nul0a);
+					$$.traducao = genMallocStr("\t" + t_cnt0 + " = 1;\n", t_cnt0, temp)
+					           + "\t" + t_idx0a + " = 0;\n"
+					           + "\t" + t_nul0a + " = '\\0';\n"
+					           + "\t" + temp + "[" + t_idx0a + "] = " + t_nul0a + ";\n";
+				} else {
+					$$.traducao = "";
+				}
+			}
+			| TK_TIPO TK_VARIAVEL '=' E
+			{
+				// Verifica redeclaracao apenas no escopo atual
+				if(pilha_escopos.back().count($2.label)){
+					yyerror("Variavel ja declarada neste escopo: " + $2.label);
+					exit(1);
+				}
+				if ($1.label == "string") {
+					if ($4.tipo != "string") {
+						yyerror("Atribuicao invalida: nao e possivel atribuir '" + $4.tipo + "' em variavel do tipo 'string'");
 						exit(1);
 					}
-
+					string temp = gentempcode();
+					add_var($2.label, "string", false, temp);
+					if ($4.is_literal) {
+						// Tamanho exato calculado em compile-time (label inclui as aspas)
+						int tamanho = (int)$4.label.length() - 1;
+						string t_sz_li = gentempcode(); add_var(t_sz_li, "int", true, t_sz_li);
+						$$.traducao = $4.traducao +
+							genMallocStr("\t" + t_sz_li + " = " + to_string(tamanho) + ";\n", t_sz_li, temp) +
+							"\tstrcpy(" + temp + ", " + $4.label + ");\n";
+					} else if ($4.owns_memory) {
+						// Expressao ja e uma alocacao nova (concat): transfere ponteiro diretamente
+						$$.traducao = $4.traducao +
+							"\t" + temp + " = " + $4.label + ";\n";
+					} else {
+						// Variavel existente: precisa copiar para nao compartilhar ponteiro
+						string cnt    = gentempcode(); add_var(cnt,    "int", true, cnt);
+						string t_p1_d = gentempcode(); add_var(t_p1_d, "int", true, t_p1_d);
+						$$.traducao = $4.traducao +
+							"\t" + cnt + " = 0;\n" +
+							genContaChars($4.label, cnt) +
+							genMallocStr("\t" + t_p1_d + " = " + cnt + " + 1;\n", t_p1_d, temp) +
+							"\tstrcpy(" + temp + ", " + $4.label + ");\n";
+						}
+					} else {
+					atributos expressao = $4;
+					string acao = checar_atribuicao($1.label, expressao.tipo);
+					if(acao == "") {
+						yyerror("Atribuicao invalida: nao e possivel atribuir '" + expressao.tipo + "' em variavel do tipo '" + $1.label + "'");
+						exit(1);
+					}
+					if(acao == "promove") {
+						expressao = converter_p_float(expressao);
+					}
 					string temp = gentempcode();
 					add_var($2.label, $1.label, false, temp);
-
-						if ($1.label == "string") {
-						// Aloca string vazia (1 byte): garante que a variavel seja valida
-						// mesmo sem atribuicao previa, evitando segfault em printf etc.
-						string t_cnt0  = gentempcode(); add_var(t_cnt0,  "int",  true, t_cnt0);
-						string t_idx0a = gentempcode(); add_var(t_idx0a, "int",  true, t_idx0a);
-						string t_nul0a = gentempcode(); add_var(t_nul0a, "char", true, t_nul0a);
-						$$.traducao = genMallocStr("\t" + t_cnt0 + " = 1;\n", t_cnt0, temp)
-						           + "\t" + t_idx0a + " = 0;\n"
-						           + "\t" + t_nul0a + " = '\\0';\n"
-						           + "\t" + temp + "[" + t_idx0a + "] = " + t_nul0a + ";\n";
-					} else {
-						$$.traducao = "";
-					}
-				}
-				| TK_TIPO TK_VARIAVEL '=' E
-				{
-					// Verifica redeclaracao apenas no escopo atual
-					if(pilha_escopos.back().count($2.label)){
-						yyerror("Variavel ja declarada neste escopo: " + $2.label);
-						exit(1);
-					}
-
-					if ($1.label == "string") {
-						if ($4.tipo != "string") {
-							yyerror("Atribuicao invalida: nao e possivel atribuir '" + $4.tipo + "' em variavel do tipo 'string'");
-							exit(1);
-						}
-						string temp = gentempcode();
-						add_var($2.label, "string", false, temp);
-						if ($4.is_literal) {
-							// Tamanho exato calculado em compile-time (label inclui as aspas)
-							int tamanho = (int)$4.label.length() - 1;
-							string t_sz_li = gentempcode(); add_var(t_sz_li, "int", true, t_sz_li);
-							$$.traducao = $4.traducao +
-								genMallocStr("\t" + t_sz_li + " = " + to_string(tamanho) + ";\n", t_sz_li, temp) +
-								"\tstrcpy(" + temp + ", " + $4.label + ");\n";
-						} else if ($4.owns_memory) {
-							// Expressao ja e uma alocacao nova (concat): transfere ponteiro diretamente
-							$$.traducao = $4.traducao +
-								"\t" + temp + " = " + $4.label + ";\n";
-						} else {
-							// Variavel existente: precisa copiar para nao compartilhar ponteiro
-							string cnt    = gentempcode(); add_var(cnt,    "int", true, cnt);
-							string t_p1_d = gentempcode(); add_var(t_p1_d, "int", true, t_p1_d);
-							$$.traducao = $4.traducao +
-								"\t" + cnt + " = 0;\n" +
-								genContaChars($4.label, cnt) +
-								genMallocStr("\t" + t_p1_d + " = " + cnt + " + 1;\n", t_p1_d, temp) +
-								"\tstrcpy(" + temp + ", " + $4.label + ");\n";
-						}
-					} else {
-						atributos expressao = $4;
-						string acao = checar_atribuicao($1.label, expressao.tipo);
-						if(acao == "") {
-							yyerror("Atribuicao invalida: nao e possivel atribuir '" + expressao.tipo + "' em variavel do tipo '" + $1.label + "'");
-							exit(1);
-						}
-						if(acao == "promove") {
-							expressao = converter_p_float(expressao);
-						}
-						string temp = gentempcode();
-						add_var($2.label, $1.label, false, temp);
-						$$.traducao = expressao.traducao + "\t" + temp + " = " + expressao.label + ";\n";
+					$$.traducao = expressao.traducao + "\t" + temp + " = " + expressao.label + ";\n";
 					}
 				}
 				| TK_VARIAVEL '=' E
@@ -1294,6 +1443,11 @@
 					}
 
 					variavel a = buscar_var($1.label);
+
+					if (a.eh_matriz) {
+    					yyerror("Nao e possivel atribuir em uma matriz inteira com '='. Use m[i][j] = valor.");
+    					exit(1);
+					}
 
 					if (a.tipo == "string") {
 						if ($3.tipo != "string") {
@@ -1343,8 +1497,11 @@
 				| TK_VARIAVEL TK_PLUS_EQ E
 				{
 					// x += e  ≡  t = x + e; x = t  (3 enderecos)
-					if (!verificacao_tabela($1.label)) { yyerror("Variavel nao declarada: " + $1.label); exit(1); }
-					variavel a = buscar_var($1.label);
+					//if (!verificacao_tabela($1.label)) { yyerror("Variavel nao declarada: " + $1.label); exit(1); }
+					//variavel a = buscar_var($1.label);
+
+					variavel a = buscar_var_escalar($1.label, "Operador '+='");
+
 					atributos lhs; lhs.label = a.temp; lhs.tipo = a.tipo; lhs.traducao = "";
 					string tipoFinal = checar_aritmetico(a.tipo, $3.tipo);
 					if (tipoFinal == "") { yyerror("Operador '+=' invalido entre '" + a.tipo + "' e '" + $3.tipo + "'"); exit(1); }
@@ -1359,8 +1516,11 @@
 				| TK_VARIAVEL TK_MINUS_EQ E
 				{
 					// x -= e  ≡  t = x - e; x = t  (3 enderecos)
-					if (!verificacao_tabela($1.label)) { yyerror("Variavel nao declarada: " + $1.label); exit(1); }
-					variavel a = buscar_var($1.label);
+					//if (!verificacao_tabela($1.label)) { yyerror("Variavel nao declarada: " + $1.label); exit(1); }
+					//variavel a = buscar_var($1.label);
+
+					variavel a = buscar_var_escalar($1.label, "Operador '-='");
+
 					atributos lhs; lhs.label = a.temp; lhs.tipo = a.tipo; lhs.traducao = "";
 					string tipoFinal = checar_aritmetico(a.tipo, $3.tipo);
 					if (tipoFinal == "") { yyerror("Operador '-=' invalido entre '" + a.tipo + "' e '" + $3.tipo + "'"); exit(1); }
@@ -1375,8 +1535,11 @@
 				| TK_VARIAVEL TK_STAR_EQ E
 				{
 					// x *= e  ≡  t = x * e; x = t  (3 enderecos)
-					if (!verificacao_tabela($1.label)) { yyerror("Variavel nao declarada: " + $1.label); exit(1); }
-					variavel a = buscar_var($1.label);
+					//if (!verificacao_tabela($1.label)) { yyerror("Variavel nao declarada: " + $1.label); exit(1); }
+					//variavel a = buscar_var($1.label);
+
+					variavel a = buscar_var_escalar($1.label, "Operador '*='");
+
 					atributos lhs; lhs.label = a.temp; lhs.tipo = a.tipo; lhs.traducao = "";
 					string tipoFinal = checar_aritmetico(a.tipo, $3.tipo);
 					if (tipoFinal == "") { yyerror("Operador '*=' invalido entre '" + a.tipo + "' e '" + $3.tipo + "'"); exit(1); }
@@ -1391,8 +1554,11 @@
 				| TK_VARIAVEL TK_SLASH_EQ E
 				{
 					// x /= e  ≡  t = x / e; x = t  (3 enderecos)
-					if (!verificacao_tabela($1.label)) { yyerror("Variavel nao declarada: " + $1.label); exit(1); }
-					variavel a = buscar_var($1.label);
+					//if (!verificacao_tabela($1.label)) { yyerror("Variavel nao declarada: " + $1.label); exit(1); }
+					//variavel a = buscar_var($1.label);
+
+					variavel a = buscar_var_escalar($1.label, "Operador '/='");
+
 					atributos lhs; lhs.label = a.temp; lhs.tipo = a.tipo; lhs.traducao = "";
 					string tipoFinal = checar_aritmetico(a.tipo, $3.tipo);
 					if (tipoFinal == "") { yyerror("Operador '/=' invalido entre '" + a.tipo + "' e '" + $3.tipo + "'"); exit(1); }
@@ -1404,7 +1570,93 @@
 					           + "\t" + t + " = " + lhs.label + " / " + expr.label + ";\n"
 					           + "\t" + a.temp + " = " + t + ";\n";
 				}
+				| TK_VARIAVEL '[' E ']' '[' E ']' '=' E
+				{
+					if (!verificacao_tabela($1.label)) {
+					    yyerror("Variavel nao declarada: " + $1.label);
+					    exit(1);
+					}
+
+				    variavel v = buscar_var($1.label);
+
+				    atributos indice = gen_indice_matriz($1.label, v, $3, $6);
+
+				    atributos expr = $9;
+
+				    string acao = checar_atribuicao(v.tipo, expr.tipo);
+
+				    if (acao == "") {
+				        yyerror("Atribuicao invalida: nao e possivel atribuir '" + expr.tipo + "' em elemento de matriz do tipo '" + v.tipo + "'");
+				        exit(1);
+				    }
+
+				    if (acao == "promove") {
+				        expr = converter_p_float(expr);
+				    }
+
+				    $$.traducao = indice.traducao + expr.traducao + "\t" + v.temp + "[" + indice.label + "] = " + expr.label + ";\n";
+				}
 				;
+
+	// Inicialização Matriz
+
+	mat_init   : '{' mat_linhas '}'
+        {
+            $$ = $2;
+        }
+        ;
+
+	mat_linhas : mat_linha
+    {
+        $$ = $1;
+    }
+    | mat_linhas ',' mat_linha
+    {
+        if ($1.init_colunas != $3.init_colunas) {
+            yyerror("Todas as linhas da matriz devem ter a mesma quantidade de colunas");
+            exit(1);
+		}
+        
+        $$.init_labels = $1.init_labels;
+        $$.init_tipos = $1.init_tipos;
+        $$.init_traducoes = $1.init_traducoes;
+        $$.init_labels.insert($$.init_labels.end(), $3.init_labels.begin(), $3.init_labels.end());
+        $$.init_tipos.insert($$.init_tipos.end(), $3.init_tipos.begin(), $3.init_tipos.end());
+        $$.init_traducoes.insert($$.init_traducoes.end(), $3.init_traducoes.begin(), $3.init_traducoes.end());
+        $$.init_linhas = $1.init_linhas + 1;
+        $$.init_colunas = $1.init_colunas;
+    }
+    ;
+
+	mat_linha  : '{' expr_lista '}'
+	{
+	    $$ = $2;
+	    $$.init_linhas = 1;
+	    $$.init_colunas = $2.init_colunas;
+	}
+	;
+
+	expr_lista : E
+	{
+	    $$.init_labels.clear();
+	    $$.init_tipos.clear();
+	    $$.init_traducoes.clear();
+	    $$.init_labels.push_back($1.label);
+	    $$.init_tipos.push_back($1.tipo);
+	    $$.init_traducoes.push_back($1.traducao);
+	    $$.init_colunas = 1;
+	}
+	| expr_lista ',' E
+	{
+	    $$.init_labels = $1.init_labels;
+	    $$.init_tipos = $1.init_tipos;
+	    $$.init_traducoes = $1.init_traducoes;
+	    $$.init_labels.push_back($3.label);
+	    $$.init_tipos.push_back($3.tipo);
+	    $$.init_traducoes.push_back($3.traducao);
+	    $$.init_colunas = $1.init_colunas + 1;
+	}
+	;
 
 	// ---- Regras auxiliares para chamadas de funcao ----
 
@@ -1453,8 +1705,7 @@
 					string temp = gentempcode();
 					add_param($2.label, $1.label, temp);
 					current_func_param_tipos.push_back($1.label);
-					string tipo_c = ($1.label == "bool")   ? "int"   :
-					               ($1.label == "string") ? "char*" : $1.label;
+					string tipo_c = ($1.label == "bool")   ? "int"   : ($1.label == "string") ? "char*" : $1.label;
 					$$.label = tipo_c + " " + temp; // ex: "int t5"
 				}
 				;
@@ -1739,6 +1990,123 @@
 		var_func = "";
 		current_func_nome = "";
 		current_func_tipo = "";
+	}
+
+	string tipo_c_de(string tipo) {
+    	if (tipo == "bool") return "int";
+    	if (tipo == "string") return "char *";
+    	return tipo;
+	}
+
+	void add_matriz(string nome, string tipo_base, string temp, int linhas, int colunas){
+
+		if(tipo_base == "string"){
+			yyerror("Matriz de string nao suportada");
+			exit(1);
+		}
+
+		if(linhas <= 0 || colunas <= 0){
+			yyerror("Valor inválido");
+			exit(1);
+		}
+
+		if (pilha_escopos.back().count(nome)) {
+        	yyerror("Variavel ja declarada neste escopo: " + nome);
+        	exit(1);
+		}
+
+		variavel v;
+    	v.temp = temp;
+    	v.tipo = tipo_base;
+    	v.valor = "";
+    	v.eh_matriz = true;
+    	v.linhas = linhas;
+    	v.colunas = colunas;
+
+    	pilha_escopos.back()[nome] = v;
+
+    	string& destino = dentro_funcao ? var_func : var;
+
+    	int total = linhas * colunas;
+
+    	destino += "\t" + tipo_c_de(tipo_base) + " " + temp + "[" + to_string(total) + "];\n";
+		
+	}
+
+	atributos gen_indice_matriz(string nome, variavel v, atributos linha, atributos coluna){
+		if (!v.eh_matriz) {
+    	    yyerror("Acesso inválido");
+    	    exit(1);
+    	}
+
+    	if (linha.tipo != "int") {
+    	    yyerror("Indice da linha deve ser int, recebeu '" + linha.tipo + "'");
+    	    exit(1);
+    	}
+
+    	if (coluna.tipo != "int") {
+    	    yyerror("Indice da coluna deve ser int, recebeu '" + coluna.tipo + "'");
+    	    exit(1);
+    	}
+
+    	atributos r;
+    	r.tipo = "int";
+
+    	string t_colunas = gentempcode();
+    	add_var(t_colunas, "int", true, t_colunas);
+
+    	string t_mult = gentempcode();
+    	add_var(t_mult, "int", true, t_mult);
+
+    	string t_indice = gentempcode();
+    	add_var(t_indice, "int", true, t_indice);
+
+    	r.label = t_indice;
+
+    	r.traducao = linha.traducao
+    	           + coluna.traducao
+    	           + "\t" + t_colunas + " = " + to_string(v.colunas) + ";\n"
+    	           + "\t" + t_mult + " = " + linha.label + " * " + t_colunas + ";\n"
+    	           + "\t" + t_indice + " = " + t_mult + " + " + coluna.label + ";\n";
+
+    	return r;
+
+	}
+
+	variavel buscar_var_escalar(string nome, string contexto) {
+    	if (!verificacao_tabela(nome)) {
+    	    yyerror("Variavel nao declarada: " + nome);
+    	    exit(1);
+    	}
+
+    	variavel v = buscar_var(nome);
+
+    	if (v.eh_matriz) {
+    	    yyerror(contexto + " nao pode ser aplicado a matriz inteira '" + nome + "'. Use " + nome + "[i][j].");
+    	    exit(1);
+    	}
+
+    	return v;
+	}
+
+	int str_to_int(string s) {
+    	int valor = 0;
+
+    	if (s.empty()) {
+    	    yyerror("Numero inteiro vazio");
+    	    exit(1);
+    	}
+
+    	for (int i = 0; i < (int)s.size(); i++) {
+    	    if (s[i] < '0' || s[i] > '9') {
+    	        yyerror("Numero inteiro invalido: " + s);
+    	        exit(1);
+    	    }
+
+    	    valor = valor * 10 + (s[i] - '0');
+    	}
+
+    	return valor;
 	}
 
 	int main(int argc, char* argv[])
