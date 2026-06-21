@@ -1,0 +1,1 @@
+Erro na linha 1: Operador '**' requer expoente do tipo int, recebeu 'float'. Exponenciacao via loop so suporta expoentes inteiros

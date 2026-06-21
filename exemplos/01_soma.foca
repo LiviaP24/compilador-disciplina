@@ -1,20 +1,10 @@
-int x;
-x = 5;
-
-int a;
-a = x++;
-printf("%d %d\n", x, a);
-
-int b;
-b = ++x;
-printf("%d %d\n", x, b);
-
-x--;
-printf("%d\n", x);
-
---x;
-printf("%d\n", x);
-
+int i;
+for (i = 1; i <= 10; i = i + 1) {
+    if (i == 5) {
+        break;
+    }
+    printf("%d\n", i);
+}
 
 
 

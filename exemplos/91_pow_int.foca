@@ -1,0 +1,4 @@
+int b = 2;
+int e = 10;
+int r = b ** e;
+printf("%d", r);

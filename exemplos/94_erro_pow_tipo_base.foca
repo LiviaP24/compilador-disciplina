@@ -1,0 +1,2 @@
+bool b = true;
+int r = b ** 2;

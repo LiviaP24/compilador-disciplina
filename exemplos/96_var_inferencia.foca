@@ -1,0 +1,6 @@
+var x = 42;
+var y = 3.14;
+var ok = true;
+var c = 'Z';
+var s = "compiladores";
+printf("%d", x);

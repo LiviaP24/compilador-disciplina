@@ -16,9 +16,10 @@
 	bool usa_string = false;
 	int label_qnt = 0;
 
-	vector<string> pilha_break;   // labels de break para loops e switch
-	vector<string> pilha_inicio;  // labels de volta para loops (goto inicio)
-	vector<string> pilha_continue; // labels de continue: alvo varia por tipo de loop
+	vector<string> pilha_break;      // labels de break para loops e switch
+	vector<string> pilha_break_loop; // labels de break APENAS para loops (nao inclui switch) — usado por break all
+	vector<string> pilha_inicio;     // labels de volta para loops (goto inicio)
+	vector<string> pilha_continue;   // labels de continue: alvo varia por tipo de loop
 	string g_switch_expr_temp = "";  // temporario da expressao do switch atual
 
 	// Variaveis de contexto para compilacao de funcoes
@@ -143,6 +144,9 @@
 	%token TK_RETURN TK_VOID
 	%token TK_PLUS_EQ TK_MINUS_EQ TK_STAR_EQ TK_SLASH_EQ
 	%token TK_INC TK_DEC
+	%token TK_POW
+	%token TK_VAR
+	%token TK_ALL
 
 	// Resolve ambiguidade do dangling-else: else tem maior precedencia
 	%nonassoc TK_THEN
@@ -158,6 +162,7 @@
 
 	%left '+''-'
 	%left '*''/'
+	%right TK_POW
 	%right UMINUS
 
 	%%
@@ -259,6 +264,17 @@
 					}
 					$$.traducao = "\tgoto " + pilha_break.back() + ";\n";
 				}
+				| TK_BREAK TK_ALL ';'
+				{
+					// break all: sai de TODOS os loops aninhados de uma vez
+					// pilha_break_loop so contem labels de loops reais (nao switch)
+					if (pilha_break_loop.empty()) {
+						yyerror("'break all' fora de loop");
+						exit(1);
+					}
+					// front() = loop mais externo
+					$$.traducao = "\tgoto " + pilha_break_loop.front() + ";\n";
+				}
 				| TK_CONTINUE ';'
 				{
 					if (pilha_continue.empty()) {
@@ -333,12 +349,14 @@
 					  pilha_inicio.push_back(Li);
 					  pilha_continue.push_back(Li); // continue = L_inicio para while
 					  pilha_break.push_back(Lf);
+					  pilha_break_loop.push_back(Lf); // registra para break all
 				  }
 				  cmd
 				{
 					string Li = pilha_inicio.back();   pilha_inicio.pop_back();
 					           pilha_continue.pop_back();
 					string Lf = pilha_break.back();    pilha_break.pop_back();
+					           pilha_break_loop.pop_back();
 					string t_neg = gentempcode(); add_var(t_neg, "int", true, t_neg);
 					$$.traducao = "\t" + Li + ": ;\n"
 					           + $3.traducao
@@ -356,12 +374,14 @@
 					  pilha_inicio.push_back(Li);
 					  pilha_continue.push_back(Lc); // continue vai para a condicao, nao repete o corpo
 					  pilha_break.push_back(Lf);
+					  pilha_break_loop.push_back(Lf); // registra para break all
 				  }
 				  cmd TK_WHILE '(' E ')' ';'
 				{
 					string Li = pilha_inicio.back();    pilha_inicio.pop_back();
 					string Lc = pilha_continue.back(); pilha_continue.pop_back();
 					string Lf = pilha_break.back();     pilha_break.pop_back();
+					           pilha_break_loop.pop_back();
 					// do-while: corpo executa, depois verifica condicao
 					$$.traducao = "\t" + Li + ": ;\n"
 					           + $3.traducao
@@ -378,6 +398,7 @@
 					  pilha_inicio.push_back(Li);
 					  pilha_continue.push_back(Lincr); // continue pula para o incremento
 					  pilha_break.push_back(Lf);
+					  pilha_break_loop.push_back(Lf); // registra para break all
 				  }
 				  cmd
 				{
@@ -385,6 +406,7 @@
 					string Li    = pilha_inicio.back();   pilha_inicio.pop_back();
 					string Lincr = pilha_continue.back(); pilha_continue.pop_back();
 					string Lf    = pilha_break.back();    pilha_break.pop_back();
+					             pilha_break_loop.pop_back();
 					string t_neg = gentempcode(); add_var(t_neg, "int", true, t_neg);
 					// $4=for_init $5=E $6=';' $7=for_incr $8=')' $9=embedded $10=cmd
 					$$.traducao = $4.traducao
@@ -866,6 +888,60 @@
 					add_var($$.label, tipoFinal, true, $$.label);
 					$$.traducao = esquerda.traducao + direita.traducao + "\t" + $$.label +
 						" = " + esquerda.label + " / " + direita.label + ";\n";
+				}
+				| E TK_POW E
+				{
+					// Exponenciacao: base ** exp
+					// Implementada via loop de multiplicacao (sem pow())
+					// Restricao: expoente deve ser int (expoentes fracionarios exigiriam log/exp)
+					atributos base = $1;
+					atributos expo = $3;
+
+					if (base.tipo != "int" && base.tipo != "float") {
+						yyerror("Operador '**' requer base numerica (int ou float), recebeu '" + base.tipo + "'");
+						exit(1);
+					}
+					if (expo.tipo != "int") {
+						yyerror("Operador '**' requer expoente do tipo int, recebeu '" + expo.tipo + "'. Exponenciacao via loop so suporta expoentes inteiros");
+						exit(1);
+					}
+
+					// Tipo do resultado: int**int=int, float**int=float
+					string tipo_res = base.tipo;
+					string val_um   = (tipo_res == "float") ? "1.0" : "1";
+
+					// Variaveis temporarias do loop
+					string t_result = gentempcode(); add_var(t_result, tipo_res, true, t_result);
+					string t_i      = gentempcode(); add_var(t_i,      "int",    true, t_i);
+					string t_um     = gentempcode(); add_var(t_um,     "int",    true, t_um);
+					string t_cond   = gentempcode(); add_var(t_cond,   "int",    true, t_cond);
+					string t_neg_p  = gentempcode(); add_var(t_neg_p,  "int",    true, t_neg_p);
+					string t_mult   = gentempcode(); add_var(t_mult,   tipo_res, true, t_mult);
+					string t_soma   = gentempcode(); add_var(t_soma,   "int",    true, t_soma);
+					string L_ini    = genLabel();
+					string L_fim_p  = genLabel();
+
+					// Codigo 3-enderecos do loop:
+					// result = 1; i = 0;
+					// L_ini: if NOT (i < exp) goto L_fim
+					//        result = result * base; i = i + 1; goto L_ini
+					// L_fim: (result contem base**exp)
+					$$.label     = t_result;
+					$$.tipo      = tipo_res;
+					$$.traducao  = base.traducao + expo.traducao
+						+ "\t" + t_result + " = " + val_um + ";\n"
+						+ "\t" + t_i      + " = 0;\n"
+						+ "\t" + t_um     + " = 1;\n"
+						+ "\t" + L_ini    + ": ;\n"
+						+ "\t" + t_cond   + " = (" + t_i + " < " + expo.label + ");\n"
+						+ "\t" + t_neg_p  + " = !" + t_cond + ";\n"
+						+ "\tif (" + t_neg_p + ") goto " + L_fim_p + ";\n"
+						+ "\t" + t_mult   + " = " + t_result + " * " + base.label + ";\n"
+						+ "\t" + t_result + " = " + t_mult + ";\n"
+						+ "\t" + t_soma   + " = " + t_i + " + " + t_um + ";\n"
+						+ "\t" + t_i      + " = " + t_soma + ";\n"
+						+ "\tgoto " + L_ini + ";\n"
+						+ "\t" + L_fim_p  + ": ;\n";
 				}
 				| '(' E ')'
 				{
@@ -1595,6 +1671,49 @@
 				    }
 
 				    $$.traducao = indice.traducao + expr.traducao + "\t" + v.temp + "[" + indice.label + "] = " + expr.label + ";\n";
+				}
+				| TK_VAR TK_VARIAVEL '=' E
+				{
+					// Inferencia de tipo: o tipo da variavel e determinado pela expressao do lado direito
+					if (pilha_escopos.back().count($2.label)) {
+						yyerror("Variavel ja declarada neste escopo: " + $2.label);
+						exit(1);
+					}
+					string tipo_inf = $4.tipo;
+					if (tipo_inf == "void") {
+						yyerror("Inferencia de tipo invalida: expressao nao possui tipo definido (void)");
+						exit(1);
+					}
+					string temp = gentempcode();
+					if (tipo_inf == "string") {
+						add_var($2.label, "string", false, temp);
+						if ($4.is_literal) {
+							int tamanho = (int)$4.label.length() - 1;
+							string t_sz_v = gentempcode(); add_var(t_sz_v, "int", true, t_sz_v);
+							$$.traducao = $4.traducao
+								+ genMallocStr("\t" + t_sz_v + " = " + to_string(tamanho) + ";\n", t_sz_v, temp)
+								+ "\tstrcpy(" + temp + ", " + $4.label + ");\n";
+						} else if ($4.owns_memory) {
+							$$.traducao = $4.traducao + "\t" + temp + " = " + $4.label + ";\n";
+						} else {
+							string cnt_v = gentempcode(); add_var(cnt_v, "int", true, cnt_v);
+							string t_p_v = gentempcode(); add_var(t_p_v, "int", true, t_p_v);
+							$$.traducao = $4.traducao
+								+ "\t" + cnt_v + " = 0;\n"
+								+ genContaChars($4.label, cnt_v)
+								+ genMallocStr("\t" + t_p_v + " = " + cnt_v + " + 1;\n", t_p_v, temp)
+								+ "\tstrcpy(" + temp + ", " + $4.label + ");\n";
+						}
+					} else {
+						add_var($2.label, tipo_inf, false, temp);
+						$$.traducao = $4.traducao + "\t" + temp + " = " + $4.label + ";\n";
+					}
+				}
+				| TK_VAR TK_VARIAVEL
+				{
+					// Inferencia sem inicializacao: erro semantico
+					yyerror("Inferencia de tipo requer inicializacao: use 'var " + $2.label + " = expr'");
+					exit(1);
 				}
 				;
 

@@ -42,6 +42,7 @@ STRING \"([^\\\"]|\\.)*\"
 "*="        { return TK_STAR_EQ; }
 "/="        { return TK_SLASH_EQ; }
 [+-]		{ return *yytext; }
+"**"        { return TK_POW; }
 [*/]		{ return *yytext; }
 [()]            { return *yytext; }
 [=]             { return *yytext; }
@@ -64,6 +65,8 @@ STRING \"([^\\\"]|\\.)*\"
 "continue"  { return TK_CONTINUE; }
 "return"    { return TK_RETURN; }
 "void"      { return TK_VOID; }
+"all"       { return TK_ALL; }
+"var"       { return TK_VAR; }
 
 {BOOL}     { yylval.label = yytext; return TK_BOOL; }
 {CHAR}      { yylval.label = yytext; return TK_CHAR; }

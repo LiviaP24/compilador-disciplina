@@ -1,0 +1,1 @@
+Erro na linha 2: Operador '**' requer base numerica (int ou float), recebeu 'bool'

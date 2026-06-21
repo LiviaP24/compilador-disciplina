@@ -1,0 +1,5 @@
+int x = 10;
+float y = 3.14;
+bool b = true;
+char c = 'A';
+printf("%d", x);

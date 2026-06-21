@@ -1,0 +1,4 @@
+float base = 3.0;
+int exp = 4;
+float r = base ** exp;
+printf("%f", r);

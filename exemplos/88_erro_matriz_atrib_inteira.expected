@@ -1,0 +1,1 @@
+Erro na linha 3: Nao e possivel atribuir em uma matriz inteira com '='. Use m[i][j] = valor.
